@@ -1,0 +1,223 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:quotation_list' %}{% endblock %}
+{% block title %}{{ header.QUOTE_DOC_ID }} — Soorty{% endblock %}
+{% block page_title %}{{ header.QUOTE_DOC_ID }}{% endblock %}
+{% block content %}
+
+<div class="erp-card" data-compact-override="false">
+  <div class="erp-card-header" style="justify-content:space-between;">
+    <span style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:8px;">
+      Quotation Header
+      {% if is_locked %}
+      <span class="badge" style="background:#fde8e8;color:#a32d2d;font-size:11px;font-weight:700;"><i class="ti ti-lock" style="font-size:11px;margin-right:3px;"></i>Locked</span>
+      {% else %}
+      <span class="badge" style="background:#ECFDF5;color:#047857;font-size:11px;font-weight:700;">Open</span>
+      {% endif %}
+    </span>
+    <a href="{% url 'wastage:quotation_list' %}" class="btn btn-sm" style="background:#F1F5F9;color:#475569;border:1px solid #E2E8F0;font-size:12px;padding:6px 18px;font-weight:600;">
+      <i class="ti ti-logout me-1"></i> Exit
+    </a>
+  </div>
+  <div style="display:flex;flex-wrap:nowrap;justify-content:space-between;gap:12px;font-size:13px;overflow-x:auto;">
+    <div style="flex:0 0 auto;"><div style="color:#1F2937;font-size:11px;font-weight:600;text-transform:uppercase;">Doc ID</div><div style="font-weight:700;color:#10B981;white-space:nowrap;">{{ header.QUOTE_DOC_ID }}</div></div>
+    <div style="flex:0 0 auto;"><div style="color:#1F2937;font-size:11px;font-weight:600;text-transform:uppercase;">Division</div><div style="font-weight:700;color:#0F172A;">{{ header.DIVISION }}</div></div>
+    <div style="flex:0 0 auto;"><div style="color:#1F2937;font-size:11px;font-weight:600;text-transform:uppercase;">Month</div><div style="font-weight:700;color:#0F172A;white-space:nowrap;">{{ header.TARGET_MONTH_DISPLAY }}</div></div>
+    <div style="flex:0 0 auto;"><div style="color:#1F2937;font-size:11px;font-weight:600;text-transform:uppercase;">Party</div><div style="font-weight:700;color:#0F172A;white-space:nowrap;">{{ header.VENDOR_NAME|default:"—" }}</div></div>
+    <div style="flex:0 0 auto;"><div style="color:#1F2937;font-size:11px;font-weight:600;text-transform:uppercase;">Reference No</div><div style="font-weight:700;color:#10B981;white-space:nowrap;">{{ header.REFERENCE_NO|default:"—" }}</div></div>
+    <div style="flex:0 0 auto;"><div style="color:#1F2937;font-size:11px;font-weight:600;text-transform:uppercase;">Receive Date</div><div style="font-weight:700;color:#0F172A;white-space:nowrap;">{{ header.RECEIVE_DATE|default:"—" }}</div></div>
+    <div style="flex:0 0 auto;"><div style="color:#1F2937;font-size:11px;font-weight:600;text-transform:uppercase;">Valid Until</div><div style="font-weight:700;color:#0F172A;white-space:nowrap;">{{ header.VALID_UNTIL|default:"—" }}</div></div>
+    <div style="flex:0 0 auto;"><div style="color:#1F2937;font-size:11px;font-weight:600;text-transform:uppercase;">Remarks</div><div style="font-weight:700;color:#0F172A;white-space:nowrap;">{{ header.REMARKS|default:"—" }}</div></div>
+  </div>
+</div>
+
+<div class="erp-card" data-compact-override="false">
+  <div class="erp-card-header">
+    <span style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:8px;">
+      Quotation Lines
+      <span class="badge" style="background:#ECFDF5;color:#047857;border:1px solid rgba(4,120,87,.15);font-size:11px;font-weight:700;text-transform:none;letter-spacing:normal;">{{ lines|length }} Items</span>
+    </span>
+  </div>
+
+  <div class="table-responsive" style="border:1px solid #E5E7EB;border-radius:6px;">
+    <table class="table table-sm align-middle mb-0" id="quoteLineGrid" style="font-size:13px;table-layout:fixed;" data-dynamic-columns="false">
+      <colgroup>
+        <col style="width:80px;">
+        <col style="width:90px;">
+        <col style="width:300px;">
+        <col style="width:80px;">
+        <col style="width:110px;">
+        <col style="width:160px;">
+        <col style="width:140px;">
+        <col style="width:90px;">
+      </colgroup>
+      <thead style="background:#f9f9f9;color:#334155;">
+        <tr>
+          <th class="text-center">Line #</th>
+          <th>Item ID</th>
+          <th>Item</th>
+          <th>UOM</th>
+          <th style="text-align:right;">Quantity</th>
+          <th style="text-align:right;">Last Month Price</th>
+          <th style="text-align:right;">Offered Price</th>
+          <th class="text-center">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="quoteLineGridBody">
+        {% for l in lines %}
+        <tr>
+          <td style="color:#6B7280;">{{ l.LINE_NO }}</td>
+          <td style="color:#10B981;font-weight:600;">{{ l.ITEM_ID }}</td>
+          <td><strong>{{ l.ITEM_NAME|default:"—" }}</strong></td>
+          <td style="color:#6B7280;">{{ l.UOM|default:"—" }}</td>
+          <td style="text-align:right;">{{ l.OFFERED_QTY|floatformat:2 }}</td>
+          <td style="text-align:right;color:#6B7280;">{% if l.LAST_MONTH_PRICE %}{{ l.LAST_MONTH_PRICE|floatformat:2 }}{% else %}—{% endif %}</td>
+          <td style="text-align:right;font-weight:700;">
+            {% if l.STATUS != 'Locked' %}
+            <form method="post" action="{% url 'wastage:quotation_line_edit_price' header.QUOTE_DOC_ID l.LINE_ID %}" style="display:flex;align-items:center;justify-content:flex-end;gap:4px;">
+              {% csrf_token %}
+              <input type="number" step="0.001" min="0" name="current_offered_price" value="{{ l.CURRENT_OFFERED_PRICE|floatformat:2 }}" class="form-control form-control-sm text-end" style="font-size:13px;width:100px;">
+              <button type="submit" class="btn btn-sm action-btn action-view" title="Update price — party revised their bid"><i class="ti ti-device-floppy"></i></button>
+            </form>
+            {% else %}
+            {{ l.CURRENT_OFFERED_PRICE|floatformat:2 }}
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if l.STATUS != 'Locked' %}
+            <form method="post" action="{% url 'wastage:quotation_line_delete' header.QUOTE_DOC_ID l.LINE_ID %}" onsubmit="return confirm('Remove this line?')">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm action-btn action-delete" title="Remove line"><i class="ti ti-trash"></i></button>
+            </form>
+            {% else %}<span class="badge" style="background:#fde8e8;color:#a32d2d;font-size:10px;" title="Already routed to Sales">Locked</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not lines and not available_items %}
+        <tr><td colspan="8" style="text-align:center;color:#6B7280;padding:20px;">No line items yet.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mt-3 d-flex justify-content-between align-items-center">
+    {% if not is_locked %}
+    <button type="button" class="btn btn-sm" id="addQuoteLineRowBtn" style="background:#ECFDF5;color:#047857;border:1px solid rgba(4,120,87,.3);font-size:12px;padding:6px 16px;font-weight:600;">
+      <i class="ti ti-plus"></i> Add New Row
+    </button>
+    {% else %}
+    <span style="font-size:12px;color:#6B7280;"><i class="ti ti-lock" style="font-size:11px;margin-right:4px;"></i>This quotation is locked — sales have already been generated from it. No further changes are possible.</span>
+    {% endif %}
+    {% if available_items %}
+    <button type="button" class="btn btn-sm" id="saveQuoteLinesBtn" style="background:#10B981;color:#FFFFFF;font-size:12px;padding:6px 18px;font-weight:600;">
+      <i class="ti ti-device-floppy me-1"></i> Save Lines
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<form method="post" id="bulkQuoteLinesForm" style="display:none;">
+  {% csrf_token %}
+</form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  let nextLineNo = {{ next_line_no }};
+  const tbody = document.querySelector('#quoteLineGridBody');
+  const addRowBtn = document.getElementById('addQuoteLineRowBtn');
+  const saveBtn = document.getElementById('saveQuoteLinesBtn');
+  const bulkForm = document.getElementById('bulkQuoteLinesForm');
+
+  function renumberLines() {
+    tbody.querySelectorAll('.quote-line-row').forEach((row, idx) => {
+
+      row.querySelector('.row-line-no').textContent = {{ next_line_no }} + (idx * 10);
+    });
+  }
+
+  function createLineRow(focusFirst) {
+    const tr = document.createElement('tr');
+    tr.className = 'quote-line-row';
+    tr.innerHTML = `
+      <td class="text-center row-line-no" style="color:#6B7280;"></td>
+      <td class="row-item-id" style="color:#10B981;font-weight:600;">&nbsp;</td>
+      <td>
+        <select class="form-control form-control-sm input-quote-item" required style="font-size:13px;">
+          <option value="" disabled selected>-- Select item --</option>
+          {% for i in available_items %}<option value="{{ i.ITEM_ID }}" data-item-id="{{ i.ITEM_ID }}" data-uom="{{ i.UOM|default:'' }}" data-offered-qty="{{ i.CLOSING_BALANCE|default:0 }}" data-last-month-price="{{ i.LAST_MONTH_PRICE|default:'' }}">{{ i.ITEM_ID }} - {{ i.ITEM_NAME }}</option>{% endfor %}
+        </select>
+      </td>
+      <td class="text-center row-uom" style="color:#6B7280;">&nbsp;</td>
+      <td class="text-end row-offered-qty">&nbsp;</td>
+      <td class="text-end row-last-month-price" style="color:#6B7280;">&nbsp;</td>
+      <td><input type="number" step="0.001" min="0" class="form-control form-control-sm input-quote-price text-end" required style="font-size:13px;"></td>
+      <td class="text-center">
+        <button type="button" class="btn btn-sm action-btn action-delete btn-remove-quote-line" title="Remove row"><i class="ti ti-trash"></i></button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+    renumberLines();
+
+    const itemInput = tr.querySelector('.input-quote-item');
+    const priceInput = tr.querySelector('.input-quote-price');
+
+    itemInput.addEventListener('change', function () {
+      const opt = itemInput.options[itemInput.selectedIndex];
+      tr.querySelector('.row-item-id').textContent = opt.getAttribute('data-item-id') || '—';
+      tr.querySelector('.row-uom').textContent = opt.getAttribute('data-uom') || '—';
+      tr.querySelector('.row-offered-qty').textContent = parseFloat(opt.getAttribute('data-offered-qty') || 0).toFixed(2);
+      const lastPrice = opt.getAttribute('data-last-month-price');
+      tr.querySelector('.row-last-month-price').textContent = lastPrice ? parseFloat(lastPrice).toFixed(2) : '—';
+    });
+
+    tr.querySelector('.btn-remove-quote-line').addEventListener('click', function () {
+      tr.remove();
+      renumberLines();
+    });
+
+    priceInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Tab' && !e.shiftKey && tr === tbody.lastElementChild) {
+        const complete = itemInput.value.trim() !== '' && priceInput.value.trim() !== '';
+        if (complete) {
+          e.preventDefault();
+          createLineRow(true);
+        }
+      }
+    });
+
+    if (focusFirst) itemInput.focus();
+    return tr;
+  }
+
+  function collectLinesIntoForm() {
+    bulkForm.querySelectorAll('input[name$="[]"]').forEach(el => el.remove());
+    tbody.querySelectorAll('.quote-line-row').forEach(row => {
+      const itemVal = row.querySelector('.input-quote-item').value.trim();
+      if (!itemVal) return;
+      const add = (name, val) => {
+        const h = document.createElement('input');
+        h.type = 'hidden'; h.name = name; h.value = val;
+        bulkForm.appendChild(h);
+      };
+      add('item_id[]', itemVal);
+      add('current_offered_price[]', row.querySelector('.input-quote-price').value.trim());
+    });
+  }
+
+  if (addRowBtn) {
+    addRowBtn.addEventListener('click', function () { createLineRow(true); });
+  }
+
+  if (saveBtn) {
+    saveBtn.addEventListener('click', function () {
+      collectLinesIntoForm();
+      bulkForm.action = "{% url 'wastage:quotation_lines_bulk_save' header.QUOTE_DOC_ID %}";
+      bulkForm.submit();
+    });
+  }
+
+  {% if available_items %}
+  createLineRow(false);
+  {% endif %}
+});
+</script>
+{% endblock %}

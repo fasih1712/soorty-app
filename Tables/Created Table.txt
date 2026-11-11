@@ -1,0 +1,116 @@
+CREATE TABLE wst_djn_categories (
+    category_id   NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    category_name VARCHAR2(100) NOT NULL,
+    description   VARCHAR2(500)
+);
+
+CREATE TABLE wst_djn_departments (
+    dept_id       NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    dept_name     VARCHAR2(100) NOT NULL,
+    location      VARCHAR2(100),
+    supervisor_id NUMBER
+);
+
+CREATE TABLE wst_djn_vendors (
+    vendor_id     NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    vendor_name   VARCHAR2(100) NOT NULL,
+    contact_person VARCHAR2(100),
+    phone         VARCHAR2(20),
+    whatsapp_no   VARCHAR2(20),
+    email         VARCHAR2(100),
+    address       VARCHAR2(500),
+    is_active     NUMBER(1) DEFAULT 1
+);
+
+CREATE TABLE wst_djn_items (
+    item_id       NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    category_id   NUMBER REFERENCES wst_djn_categories(category_id),
+    item_name     VARCHAR2(100) NOT NULL,
+    unit          VARCHAR2(20),
+    condition     VARCHAR2(50),
+    description   VARCHAR2(500),
+    is_active     NUMBER(1) DEFAULT 1
+);
+
+CREATE TABLE wst_djn_monthly_stock_list (
+    list_id       NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    item_id       NUMBER REFERENCES wst_djn_items(item_id),
+    month_year    DATE,
+    closing_qty   NUMBER(15,3),
+    condition     VARCHAR2(50),
+    dispatched    NUMBER(1) DEFAULT 0,
+    dispatched_at TIMESTAMP
+);
+
+CREATE TABLE wst_djn_stock_ledger (
+    ledger_id     NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    item_id       NUMBER REFERENCES wst_djn_items(item_id),
+    txn_date      DATE,
+    txn_type      VARCHAR2(20),
+    qty_in        NUMBER(15,3) DEFAULT 0,
+    qty_out       NUMBER(15,3) DEFAULT 0,
+    balance       NUMBER(15,3) DEFAULT 0,
+    ref_id        NUMBER
+);
+
+CREATE TABLE wst_djn_quotations (
+    quote_id      NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    list_id       NUMBER REFERENCES wst_djn_monthly_stock_list(list_id),
+    vendor_id     NUMBER REFERENCES wst_djn_vendors(vendor_id),
+    item_id       NUMBER REFERENCES wst_djn_items(item_id),
+    rate_per_unit NUMBER(15,3),
+    quote_date    DATE,
+    remarks       VARCHAR2(500)
+);
+
+CREATE TABLE wst_djn_vendor_assignment (
+    assign_id     NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    list_id       NUMBER REFERENCES wst_djn_monthly_stock_list(list_id),
+    vendor_id     NUMBER REFERENCES wst_djn_vendors(vendor_id),
+    item_id       NUMBER REFERENCES wst_djn_items(item_id),
+    quote_id      NUMBER REFERENCES wst_djn_quotations(quote_id),
+    assigned_qty  NUMBER(15,3),
+    agreed_rate   NUMBER(15,3),
+    assigned_date DATE
+);
+
+CREATE TABLE wst_djn_stock_receiving (
+    receive_id    NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    item_id       NUMBER REFERENCES wst_djn_items(item_id),
+    dept_id       NUMBER REFERENCES wst_djn_departments(dept_id),
+    received_by   NUMBER,
+    receive_date  DATE,
+    qty_received  NUMBER(15,3),
+    remarks       VARCHAR2(500)
+);
+
+CREATE TABLE wst_djn_sales (
+    sale_id       NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    assign_id     NUMBER REFERENCES wst_djn_vendor_assignment(assign_id),
+    vendor_id     NUMBER REFERENCES wst_djn_vendors(vendor_id),
+    invoice_no    VARCHAR2(50),
+    sale_date     DATE,
+    total_amount  NUMBER(15,2),
+    status        VARCHAR2(20) DEFAULT 'PENDING',
+    created_by    NUMBER
+);
+
+CREATE TABLE wst_djn_sale_items (
+    sale_item_id  NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    sale_id       NUMBER REFERENCES wst_djn_sales(sale_id),
+    item_id       NUMBER REFERENCES wst_djn_items(item_id),
+    qty_sold      NUMBER(15,3),
+    rate          NUMBER(15,3),
+    amount        NUMBER(15,2)
+);
+
+CREATE TABLE wst_djn_whatsapp_log (
+    log_id        NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    list_id       NUMBER REFERENCES wst_djn_monthly_stock_list(list_id),
+    vendor_id     NUMBER REFERENCES wst_djn_vendors(vendor_id),
+    sent_at       TIMESTAMP,
+    status        VARCHAR2(20),
+    message_text  VARCHAR2(2000)
+);
+
+COMMIT;

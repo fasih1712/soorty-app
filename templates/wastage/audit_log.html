@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:home' %}{% endblock %}
+{% block title %}Audit Log — Soorty{% endblock %}
+{% block page_title %}Audit Log{% endblock %}
+
+{% block content %}
+<div class="erp-card">
+  <div class="erp-card-header" style="justify-content:space-between;">
+    <span style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;">Audit Records</span>
+    <span style="font-size:12px;color:#6B7280;">{{ logs|length }} records shown</span>
+  </div>
+
+  <div style="padding:10px 0;">
+    <form method="get" style="display:flex; gap:8px; align-items:center;">
+      <select name="table" class="form-select form-select-sm" style="width:240px;font-size:13px;" onchange="this.form.submit()">
+        <option value="">-- All Tables --</option>
+        {% for t in tables %}
+        <option value="{{ t }}" {% if selected_table == t %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+      {% if selected_table %}
+      <a href="{% url 'wastage:audit_log' %}" class="btn btn-sm btn-outline-secondary" style="font-size:12px;">
+        <i class="ti ti-x"></i> Clear
+      </a>
+      {% endif %}
+    </form>
+  </div>
+
+  <table class="table table-sm table-hover" style="font-size:12px;">
+    <thead style="color:#6B7280;background:#f9f9f9;">
+      <tr>
+        <th>#</th><th>Table</th><th>Record ID</th><th>Action</th>
+        <th>Field</th><th>Old Value</th><th>New Value</th><th>Changed By</th><th>Date & Time</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for log in logs %}
+      <tr>
+        <td>{{ log.LOG_ID }}</td>
+        <td><span class="badge" style="background:#e6f1fb;color:#185fa5;font-size:10px;">{{ log.TABLE_NAME }}</span></td>
+        <td><strong>{{ log.RECORD_ID }}</strong></td>
+        <td>
+          {% if log.ACTION == 'CREATE' %}<span class="badge" style="background:#ECFDF5;color:#047857;">CREATE</span>
+          {% elif log.ACTION == 'UPDATE' %}<span class="badge" style="background:#faeeda;color:#854f0b;">UPDATE</span>
+          {% elif log.ACTION == 'DELETE' %}<span class="badge" style="background:#fde8e8;color:#a32d2d;">DELETE</span>
+          {% endif %}
+        </td>
+        <td>{{ log.FIELD_NAME|default:"—" }}</td>
+        <td style="color:#a32d2d;">{{ log.OLD_VALUE|default:"—"|truncatechars:30 }}</td>
+        <td style="color:#047857;">{{ log.NEW_VALUE|default:"—"|truncatechars:30 }}</td>
+        <td><strong>{{ log.CHANGED_BY }}</strong></td>
+        <td>{{ log.CHANGED_AT|default:"—" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="9" style="text-align:center;color:#6B7280;padding:20px;">No audit logs found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

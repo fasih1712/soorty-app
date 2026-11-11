@@ -1,0 +1,233 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:home' %}{% endblock %}
+{% block title %}Group Types — Soorty{% endblock %}
+{% block page_title %}User Generic Group Types{% endblock %}
+
+{% block content %}
+
+<div class="erp-card">
+  <div class="erp-card-header" style="justify-content:space-between; flex-wrap:nowrap; gap:12px;">
+    <span style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;flex-shrink:0;display:flex;align-items:center;gap:8px;">
+      Group Type Records
+      <span class="badge" style="background:#ECFDF5;color:#047857;border:1px solid rgba(4,120,87,.15);font-size:11px;font-weight:700;text-transform:none;letter-spacing:normal;">{{ records|length }} Entries</span>
+    </span>
+    <form method="get" style="display:flex; gap:8px; align-items:center; flex:1; min-width:0; max-width:400px;">
+      <input type="text" name="q" value="{{ search }}" class="form-control form-control-sm" placeholder="Search group types..." style="font-size:13px; flex:1;">
+      <button type="submit" class="btn btn-sm" style="background:#10B981;color:#FFFFFF;font-size:12px;padding:4px 14px;flex-shrink:0;"><i class="ti ti-search"></i></button>
+      {% if search %}<a href="{% url 'wastage:group_type_list' %}" class="btn btn-sm btn-outline-secondary" style="font-size:12px;flex-shrink:0;"><i class="ti ti-x"></i> Clear</a>{% endif %}
+    </form>
+    <a href="{% url 'wastage:group_type_add' %}" class="btn btn-sm" style="background:#10B981;color:#FFFFFF;font-size:12px;padding:5px 14px;white-space:nowrap;">
+      <i class="ti ti-plus me-1"></i> Add Group Type
+    </a>
+  </div>
+  {% if search %}<p style="font-size:12px; color:#6B7280; margin:-8px 0 8px;">Showing results for "<strong>{{ search }}</strong>" — {{ total }} found</p>{% endif %}
+
+  <table class="table table-sm table-hover table-col-divided" style="font-size:13px;">
+    <colgroup>
+      <col style="width:30px;">
+      <col style="width:110px;">
+      <col style="width:160px;">
+      <col>
+      <col style="width:100px;">
+    </colgroup>
+    <thead>
+      <tr>
+        <th style="width:30px;"></th>
+        <th style="width:1%;white-space:nowrap;">Actions</th>
+        <th>Group Code</th>
+        <th>Short Description</th>
+        <th>Groups</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for gt in records %}
+      <tr class="accordion-toggle" data-target="row-{{ forloop.counter }}" style="cursor:pointer;">
+        <td><i class="ti ti-chevron-right toggle-icon" id="icon-{{ forloop.counter }}"></i></td>
+        <td class="action-cell">
+          <button type="button" class="btn btn-sm action-btn action-view" title="View"
+                  data-code="{{ gt.GROUP_CODE }}"
+                  data-desc="{{ gt.SHORT_DESC|default:'—' }}"
+                  data-count="{{ gt.children|length }}"
+                  data-created-by="{{ gt.CREATED_BY|default:'—' }}"
+                  data-created-date="{{ gt.CREATED_DATE|default:'—' }}"
+                  data-updated-by="{{ gt.LAST_UPDATED_BY|default:'—' }}"
+                  data-updated-date="{{ gt.LAST_UPDATED_DATE|default:'—' }}">
+            <i class="ti ti-eye"></i>
+          </button>
+          <a href="{% url 'wastage:group_type_edit' gt.GROUP_CODE %}" class="btn btn-sm action-btn action-edit" title="Edit"><i class="ti ti-edit"></i></a>
+          <form method="post" action="{% url 'wastage:group_type_delete' gt.GROUP_CODE %}"
+                style="display:inline;" onsubmit="return confirm('Delete {{ gt.GROUP_CODE }}?')">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm action-btn action-delete" title="Delete"><i class="ti ti-trash"></i></button>
+          </form>
+        </td>
+        <td><strong>{{ gt.GROUP_CODE }}</strong></td>
+        <td>{{ gt.SHORT_DESC|default:"—" }}</td>
+        <td><span class="badge" style="background:#e6f1fb;color:#185fa5;font-size:11px;">{{ gt.children|length }}</span></td>
+      </tr>
+      <tr id="row-{{ forloop.counter }}" class="accordion-detail" style="display:none;">
+        <td colspan="5" style="background:#f9f9f9; padding:0;">
+          <div style="padding:12px 40px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <strong style="font-size:12px; color:#6B7280;">Groups under {{ gt.GROUP_CODE }}</strong>
+              <a href="{% url 'wastage:generic_group_add' %}?group_code={{ gt.GROUP_CODE }}"
+                 class="btn btn-sm" style="background:#ECFDF5;color:#047857;font-size:11px;padding:3px 10px;">
+                <i class="ti ti-plus"></i> Add Detail
+              </a>
+            </div>
+            {% if gt.children %}
+            <table class="table table-sm mb-0" style="font-size:12px; background:#FFFFFF;">
+              <thead style="color:#6B7280;">
+                <tr><th>Code</th><th>Description</th><th style="width:150px;">Actions</th></tr>
+              </thead>
+              <tbody>
+                {% for child in gt.children %}
+                <tr>
+                  <td><i class="ti ti-corner-down-right me-1" style="color:#E5E7EB;"></i><strong>{{ child.CODE }}</strong></td>
+                  <td>{{ child.DESCRIPTION|default:"—" }}</td>
+                  <td>
+                    <a href="{% url 'wastage:generic_group_edit' child.CODE %}"
+                       class="btn btn-sm pill-edit" style="padding:5px 8px;" title="Edit">
+                      <i class="ti ti-edit"></i>
+                    </a>
+                    <form method="post" action="{% url 'wastage:generic_group_delete' child.CODE %}"
+                          style="display:inline;" onsubmit="return confirm('Delete {{ child.CODE }}?')">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm pill-delete" style="padding:5px 8px;" title="Delete">
+                        <i class="ti ti-trash"></i>
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            {% else %}
+            <p style="font-size:12px; color:#6B7280; margin:0;">No groups yet.</p>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" style="text-align:center;color:#6B7280;">No group types found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Pagination -->
+  {% if total_pages > 1 %}
+  <div style="display:flex; justify-content:center; gap:6px; padding:16px 0;">
+    {% if page > 1 %}
+    <a href="?page={{ page|add:'-1' }}{% if search %}&q={{ search }}{% endif %}"
+       class="btn btn-sm btn-outline-secondary" style="font-size:12px;">‹ Prev</a>
+    {% endif %}
+
+    {% for i in total_pages_range %}
+    <a href="?page={{ i }}{% if search %}&q={{ search }}{% endif %}"
+       class="btn btn-sm {% if i == page %}btn-dark{% else %}btn-outline-secondary{% endif %}"
+       style="font-size:12px; {% if i == page %}background:#10B981;border:none;{% endif %}">{{ i }}</a>
+    {% endfor %}
+
+    {% if page < total_pages %}
+    <a href="?page={{ page|add:'1' }}{% if search %}&q={{ search }}{% endif %}"
+       class="btn btn-sm btn-outline-secondary" style="font-size:12px;">Next ›</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+
+<!-- View Modal (single reusable modal, populated via JS) -->
+<div class="modal fade" id="viewGroupTypeModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header" style="border-bottom:1px solid #eee;">
+        <h6 class="modal-title" style="font-weight:600;">Group Type Details — <span id="vw_code"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="font-size:13px;">
+        <div class="view-grid">
+          <div class="view-row"><span class="view-label">Group Code</span><span class="view-value" id="vw_code2"></span></div>
+          <div class="view-row"><span class="view-label">Short Description</span><span class="view-value" id="vw_desc"></span></div>
+          <div class="view-row"><span class="view-label">Groups</span><span class="view-value" id="vw_count"></span></div>
+        </div>
+        <hr style="margin:14px 0;">
+        <div style="color:#6B7280;font-size:11px;font-weight:600;letter-spacing:0.5px;margin-bottom:8px;">INFO</div>
+        <div class="view-grid">
+          <div class="view-row"><span class="view-label">Created By</span><span class="view-value" id="vw_created_by"></span></div>
+          <div class="view-row"><span class="view-label">Created Date</span><span class="view-value" id="vw_created_date"></span></div>
+          <div class="view-row"><span class="view-label">Last Updated By</span><span class="view-value" id="vw_updated_by"></span></div>
+          <div class="view-row"><span class="view-label">Last Updated Date</span><span class="view-value" id="vw_updated_date"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.view-grid { display:flex; flex-direction:column; gap:8px; }
+.view-row { display:flex; justify-content:space-between; gap:12px; }
+.view-label { color:#6B7280; }
+.view-value { font-weight:500; color:#111827; text-align:right; }
+</style>
+
+
+
+<script>
+/* group_type — bulletproof: delegated eye modal (bootstrap-optional) + accordion */
+(function () {
+  var TAG = '[soorty:group_type]';
+  console.log(TAG, 'interaction script loaded');
+
+  function showModal(modalEl) {
+    if (!modalEl) { console.error(TAG, 'modal not found'); return; }
+    if (window.bootstrap && bootstrap.Modal) { bootstrap.Modal.getOrCreateInstance(modalEl).show(); return; }
+    console.warn(TAG, 'Bootstrap JS missing — manual modal fallback');
+    modalEl.classList.add('show'); modalEl.style.display='block'; modalEl.removeAttribute('aria-hidden');
+    document.body.classList.add('modal-open');
+    var bd=document.createElement('div'); bd.className='modal-backdrop fade show'; document.body.appendChild(bd);
+    function hide(){ modalEl.classList.remove('show'); modalEl.style.display='none'; modalEl.setAttribute('aria-hidden','true');
+      document.body.classList.remove('modal-open'); document.querySelectorAll('.modal-backdrop').forEach(function(b){b.remove();}); }
+    bd.addEventListener('click',hide);
+    modalEl.querySelectorAll('[data-bs-dismiss="modal"], .btn-close').forEach(function(x){x.addEventListener('click',hide);});
+    modalEl.addEventListener('click',function(e){ if(e.target===modalEl) hide(); });
+  }
+
+  document.addEventListener('click', function (e) {
+    /* eye / view */
+    var eye = e.target.closest('.action-view');
+    if (eye) {
+      e.preventDefault(); e.stopPropagation();
+      console.log(TAG, 'eye clicked, code =', eye.dataset.code);
+      try {
+        document.getElementById('vw_code').textContent = eye.dataset.code;
+        document.getElementById('vw_code2').textContent = eye.dataset.code;
+        document.getElementById('vw_desc').textContent = eye.dataset.desc;
+        document.getElementById('vw_count').textContent = eye.dataset.count;
+        document.getElementById('vw_created_by').textContent = eye.dataset.createdBy;
+        document.getElementById('vw_created_date').textContent = eye.dataset.createdDate;
+        document.getElementById('vw_updated_by').textContent = eye.dataset.updatedBy;
+        document.getElementById('vw_updated_date').textContent = eye.dataset.updatedDate;
+      } catch (err) { console.error(TAG, 'populate error', err); }
+      showModal(document.getElementById('viewGroupTypeModal'));
+      return;
+    }
+    /* don't toggle accordion when clicking action buttons */
+    if (e.target.closest('.action-cell')) return;
+    /* accordion toggle */
+    var row = e.target.closest('.accordion-toggle');
+    if (!row) return;
+    var detail = document.getElementById(row.getAttribute('data-target'));
+    if (!detail) { console.error(TAG, 'detail row not found'); return; }
+    console.log(TAG, 'accordion toggle', row.getAttribute('data-target'));
+    var icon = row.querySelector('.toggle-icon');
+    var isOpen = (detail.style.display === 'table-row');
+    document.querySelectorAll('.accordion-detail').forEach(function (r) { r.style.display = 'none'; });
+    document.querySelectorAll('.toggle-icon').forEach(function (i) { i.className = 'ti ti-chevron-right toggle-icon'; });
+    if (!isOpen) { detail.style.display = 'table-row'; if (icon) icon.className = 'ti ti-chevron-down toggle-icon'; }
+  });
+})();
+</script>
+
+{% endblock %}
+

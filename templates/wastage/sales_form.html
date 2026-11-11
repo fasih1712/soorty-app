@@ -1,0 +1,267 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:sales_list' %}{% endblock %}
+{% block title %}{{ title }} — Soorty{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block content %}
+
+{% if record is None %}
+<!-- ===================== MULTI-ENTRY GRID MODE ===================== -->
+<datalist id="salesItemDatalist">
+  {% for it in items %}<option value="{{ it.ITEM_NAME }}" data-id="{{ it.ITEM_ID }}"></option>{% endfor %}
+</datalist>
+<div class="erp-card">
+  <div class="erp-card-header">
+  </div>
+
+  <div class="table-responsive" style="border: 1px solid #E5E7EB; border-radius: 6px;">
+    <table class="table table-sm align-middle mb-0" id="salesGrid" style="font-size: 13px; width: max-content; min-width: 100%;">
+      <thead style="background: #f9f9f9; color: #6B7280;">
+        <tr>
+          <th style="width:50px;" class="text-center">&nbsp;</th>
+          <th style="min-width:200px;">Vendor *</th>
+          <th style="min-width:140px;">Division *</th>
+          <th style="min-width:220px;">Item *</th>
+          <th style="min-width:120px;">Qty Sold *</th>
+          <th style="min-width:200px;">Assignment</th>
+          <th style="min-width:160px;">Invoice No *</th>
+          <th style="min-width:160px;">Sale Date *</th>
+          <th style="min-width:150px;">Total Amount *</th>
+          <th style="min-width:150px;">Status</th>
+          <th style="width:90px;" class="text-center">Action</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="mt-3 d-flex justify-content-between align-items-center">
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="addRowBtn" style="font-size:13px;">
+      <i class="ti ti-plus"></i> Add New Row
+    </button>
+    <div class="d-flex gap-2">
+      <a href="{% url 'wastage:sales_list' %}" class="btn btn-sm btn-outline-secondary" style="font-size:13px; padding:6px 18px;">Exit</a>
+      <button type="button" class="btn btn-sm btn-dark" id="saveBtn" style="background:#10B981;border:none;padding:6px 24px;font-size:13px;">
+        <i class="ti ti-device-floppy me-1"></i> Save
+      </button>
+    </div>
+  </div>
+</div>
+
+<form method="post" id="bulkSalesForm" style="display:none;">
+  {% csrf_token %}
+</form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  let rowCount = 0;
+  const tbody = document.querySelector('#salesGrid tbody');
+  const addRowBtn = document.getElementById('addRowBtn');
+  const saveBtn = document.getElementById('saveBtn');
+  const bulkForm = document.getElementById('bulkSalesForm');
+
+  function createGridRow(focusFirst = false) {
+    rowCount++;
+    const tr = document.createElement('tr');
+    tr.className = 'matrix-row';
+    tr.innerHTML = `
+      <td class="text-center text-muted fw-semibold row-num">${rowCount}</td>
+      <td>
+        <select class="form-control form-control-sm input-vendor" required style="font-size:13px;">
+          <option value="">-- Vendor --</option>
+          {% for v in vendors %}<option value="{{ v.VENDOR_ID }}">{{ v.VENDOR_NAME }}</option>{% endfor %}
+        </select>
+      </td>
+      <td>
+        {% if sees_all_divisions %}
+        <select class="form-control form-control-sm input-division" required style="font-size:13px;">
+          {% for code, label in division_choices %}<option value="{{ code }}" {% if request.user.division == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+        {% else %}
+        <span class="badge" style="background:#ECFDF5;color:#047857;font-weight:600;padding:6px 10px;white-space:nowrap;" title="Your assigned division — cannot be changed here">
+          <i class="ti ti-lock" style="font-size:11px;margin-right:4px;"></i>Division {{ request.user.division|default:"08" }}
+        </span>
+        <input type="hidden" class="input-division" value="{{ request.user.division|default:'08' }}">
+        {% endif %}
+      </td>
+      <td>
+        <input type="text" class="form-control form-control-sm input-item-name" list="salesItemDatalist"
+               placeholder="Type to search item..." autocomplete="off" required style="font-size:13px;">
+        <input type="hidden" class="input-item-id">
+      </td>
+      <td><input type="number" step="0.001" class="form-control form-control-sm input-qty" required style="font-size:13px;"></td>
+      <td>
+        <select class="form-control form-control-sm input-assign" style="font-size:13px;">
+          <option value="">-- Assignment --</option>
+          {% for a in assignments %}<option value="{{ a.ASSIGN_ID }}">{{ a.ASSIGN_ID }} - {{ a.VENDOR_NAME }}</option>{% endfor %}
+        </select>
+      </td>
+      <td><input type="text" class="form-control form-control-sm input-invoice" required style="font-size:13px;"></td>
+      <td><input type="date" class="form-control form-control-sm input-date" required style="font-size:13px;"></td>
+      <td><input type="number" step="0.01" class="form-control form-control-sm input-total" required style="font-size:13px;"></td>
+      <td>
+        <select class="form-control form-control-sm input-status" style="font-size:13px;">
+          <option value="PENDING">Pending</option>
+          <option value="COMPLETED">Completed</option>
+          <option value="CANCELLED">Cancelled</option>
+        </select>
+      </td>
+      <td class="text-center">
+        <button type="button" class="btn btn-sm btn-outline-danger btn-remove" style="padding: 2px 8px; font-size:11px;"><i class="ti ti-trash"></i></button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+
+    tr.querySelector('.btn-remove').addEventListener('click', function () {
+      if (tbody.querySelectorAll('.matrix-row').length <= 1) return;
+      tr.remove();
+      renumberRows();
+    });
+
+    // Searchable item field: match typed text against the datalist and resolve to ITEM_ID
+    const itemNameInput = tr.querySelector('.input-item-name');
+    const itemIdInput = tr.querySelector('.input-item-id');
+    function resolveItem() {
+      const typed = itemNameInput.value.trim();
+      const opt = document.querySelector(
+        `#salesItemDatalist option[value="${CSS.escape(typed)}"]`
+      );
+      if (opt) {
+        itemIdInput.value = opt.dataset.id;
+        itemNameInput.classList.remove('is-invalid');
+      } else {
+        itemIdInput.value = '';
+        if (typed) itemNameInput.classList.add('is-invalid');
+      }
+    }
+    itemNameInput.addEventListener('input', resolveItem);
+    itemNameInput.addEventListener('change', resolveItem);
+
+    const vendorInput = tr.querySelector('.input-vendor');
+    const totalInput = tr.querySelector('.input-total');
+    totalInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Tab' && !e.shiftKey && tr === tbody.lastElementChild) {
+        if (vendorInput.value.trim() !== '') {
+          e.preventDefault();
+          createGridRow(true);
+        }
+      }
+    });
+
+    if (focusFirst) vendorInput.focus();
+    renumberRows();
+  }
+
+  function renumberRows() {
+    const rows = tbody.querySelectorAll('.matrix-row');
+    rows.forEach((row, idx) => {
+      row.querySelector('.row-num').textContent = idx + 1;
+      row.querySelector('.btn-remove').disabled = (rows.length === 1);
+    });
+  }
+
+  addRowBtn.addEventListener('click', function () { createGridRow(true); });
+
+  saveBtn.addEventListener('click', function () {
+    let isValid = true;
+    const rows = tbody.querySelectorAll('.matrix-row');
+    rows.forEach(row => {
+      ['input-vendor', 'input-invoice', 'input-date', 'input-total'].forEach(cls => {
+        const el = row.querySelector('.' + cls);
+        if (!el.value.trim()) { el.classList.add('is-invalid'); isValid = false; }
+        else { el.classList.remove('is-invalid'); }
+      });
+      // Item must resolve to a real ITEM_ID (typed text must match the datalist)
+      const itemIdEl = row.querySelector('.input-item-id');
+      const itemNameEl = row.querySelector('.input-item-name');
+      if (!itemIdEl.value.trim()) { itemNameEl.classList.add('is-invalid'); isValid = false; }
+      else { itemNameEl.classList.remove('is-invalid'); }
+      const qtyEl = row.querySelector('.input-qty');
+      if (!qtyEl.value.trim()) { qtyEl.classList.add('is-invalid'); isValid = false; }
+      else { qtyEl.classList.remove('is-invalid'); }
+    });
+    if (!isValid) return;
+
+    bulkForm.innerHTML = '{% csrf_token %}';
+    rows.forEach(row => {
+      const vendor = row.querySelector('.input-vendor').value.trim();
+      if (!vendor) return;
+      const add = (name, val) => {
+        const h = document.createElement('input');
+        h.type = 'hidden'; h.name = name; h.value = val;
+        bulkForm.appendChild(h);
+      };
+      add('vendor_id[]', vendor);
+      add('division[]', row.querySelector('.input-division').value.trim());
+      add('item_id[]', row.querySelector('.input-item-id').value.trim());
+      add('qty_sold[]', row.querySelector('.input-qty').value.trim());
+      add('assign_id[]', row.querySelector('.input-assign').value.trim());
+      add('invoice_no[]', row.querySelector('.input-invoice').value.trim());
+      add('sale_date[]', row.querySelector('.input-date').value.trim());
+      add('total_amount[]', row.querySelector('.input-total').value.trim());
+      add('status[]', row.querySelector('.input-status').value.trim());
+    });
+    bulkForm.submit();
+  });
+
+  createGridRow(false);
+});
+</script>
+
+{% else %}
+<!-- ===================== SINGLE-RECORD EDIT MODE ===================== -->
+<div class="erp-card">
+  <div class="erp-card-header"><a href="{% url 'wastage:sales_list' %}" style="font-size:12px;color:#6B7280;">← Back</a></div>
+  <form method="post">
+    {% csrf_token %}
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Division</label>
+        <div>
+          <span class="badge" style="background:#ECFDF5;color:#047857;font-weight:600;padding:6px 10px;" title="Division is fixed at creation and cannot be changed">
+            <i class="ti ti-lock" style="font-size:11px;margin-right:4px;"></i>Division {{ record.DIVISION|default:"08" }}
+          </span>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Vendor *</label>
+        <select name="vendor_id" class="form-select" required>
+          <option value="">-- Select Vendor --</option>
+          {% for v in vendors %}<option value="{{ v.VENDOR_ID }}" {% if record and record.VENDOR_ID == v.VENDOR_ID %}selected{% endif %}>{{ v.VENDOR_NAME }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Assignment</label>
+        <select name="assign_id" class="form-select">
+          <option value="">-- Select Assignment --</option>
+          {% for a in assignments %}<option value="{{ a.ASSIGN_ID }}" {% if record and record.ASSIGN_ID == a.ASSIGN_ID %}selected{% endif %}>{{ a.ASSIGN_ID }} - {{ a.VENDOR_NAME }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Invoice No *</label>
+        <input type="text" name="invoice_no" class="form-control" value="{{ record.INVOICE_NO|default:'' }}" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Sale Date *</label>
+        <input type="date" name="sale_date" class="form-control" value="{{ record.SALE_DATE|default:'' }}" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Total Amount *</label>
+        <input type="number" step="0.01" name="total_amount" class="form-control" value="{{ record.TOTAL_AMOUNT|default:'' }}" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Status</label>
+        <select name="status" class="form-select">
+          <option value="PENDING" {% if record.STATUS == 'PENDING' or not record %}selected{% endif %}>Pending</option>
+          <option value="COMPLETED" {% if record.STATUS == 'COMPLETED' %}selected{% endif %}>Completed</option>
+          <option value="CANCELLED" {% if record.STATUS == 'CANCELLED' %}selected{% endif %}>Cancelled</option>
+        </select>
+      </div>
+    </div>
+    <div class="mt-4 d-flex gap-2">
+      <button type="submit" class="btn btn-dark" style="background:#10B981;border:none;padding:8px 28px;font-size:13px;"><i class="ti ti-device-floppy me-1"></i> Save</button>
+      <a href="{% url 'wastage:sales_list' %}" class="btn btn-outline-secondary" style="font-size:13px;">Exit</a>
+    </div>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

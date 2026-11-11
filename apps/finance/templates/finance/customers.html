@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Customer Advances | Finance{% endblock %}
+{% block page_title %}Customer Advances{% endblock %}
+{% block page_subtitle %}Prepaid balances by customer. Dispatch is released only against these.{% endblock %}
+{% block content %}
+{% include 'finance/_theme.html' %}
+<div class="fin-theme">
+<div class="fin-card">
+  <div class="fin-card-head">
+    <form method="get" class="d-flex gap-2"><input name="q" value="{{ search }}" class="form-control form-control-sm" placeholder="Search customer"><button class="btn btn-sm btn-outline-navy" type="submit">Search</button></form>
+    <div class="d-flex gap-2">
+      <a href="{% url 'finance:opening_add' %}" class="btn btn-sm btn-outline-navy">Load Opening Balance</a>
+      <a href="{% url 'finance:advance_add' %}" class="btn btn-sm btn-navy"><i class="ti ti-plus me-1"></i> Receive Advance</a>
+    </div>
+  </div>
+  <div class="fin-table-wrap"><table class="table table-hover align-middle mb-0">
+    <thead><tr><th>Customer</th><th>Division</th><th class="text-end">Received</th><th class="text-end">Used by dispatch</th><th class="text-end">Balance</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><strong>{{ r.VENDOR_NAME }}</strong></td>
+        <td>{{ r.DIVISION }}</td>
+        <td class="text-end text-money">{{ r.TOTAL_IN|floatformat:"2g" }}</td>
+        <td class="text-end text-money">{{ r.USED|floatformat:"2g" }}</td>
+        <td class="text-end text-money"><strong>{{ r.BALANCE|floatformat:"2g" }}</strong></td>
+        <td class="text-end"><a class="btn btn-sm btn-outline-navy mini-btn" href="{% url 'finance:customer_ledger' r.VENDOR_ID %}">Ledger</a></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6" class="text-center text-muted py-4">No advances yet. Load opening balances or receive an advance.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+<p class="section-note mt-3 mb-0">Prepaid only: a Gate Pass is released only if the customer's balance covers the dispatch, and the sale is knocked off against the oldest advance first.</p>
+</div>
+{% endblock %}

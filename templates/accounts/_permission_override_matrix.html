@@ -1,0 +1,52 @@
+{% load rbac_tags %}
+{# Expects: matrix_rows -- list of {page, cells:[{action, role_default, override}, ...]} #}
+
+<div class="permission-matrix-wrap">
+  <p style="font-size:12px; color:#6B7280; margin-bottom:12px;">
+    <strong>Inherit</strong> follows whatever this user's role(s) currently grant (shown in parentheses).
+    <strong>Grant</strong> or <strong>Deny</strong> explicitly overrides the role for this one person, for this one action, on this one page only.
+  </p>
+  {% regroup matrix_rows by page.module_group as module_groups %}
+  {% for module in module_groups %}
+  <div class="matrix-module-group" style="margin-bottom:18px;">
+    <div style="background:#F3F4F6; padding:8px 14px; border-radius:6px 6px 0 0; border:1px solid #E2E8F0; border-bottom:none;">
+      <strong style="font-size:12px; color:#334155; text-transform:uppercase; letter-spacing:.04em;">{{ module.grouper }}</strong>
+    </div>
+    <table class="table table-sm mb-0" style="font-size:13px; border:1px solid #E2E8F0; border-top:none;" data-dynamic-columns="false">
+      <thead style="background:#FAFBFC; color:#6B7280;">
+        <tr>
+          <th style="width:20%;">Page</th>
+          <th style="text-align:center; width:13%;">View</th>
+          <th style="text-align:center; width:13%;">Create</th>
+          <th style="text-align:center; width:13%;">Edit</th>
+          <th style="text-align:center; width:13%;">Delete</th>
+          <th style="text-align:center; width:14%;">Cancel</th>
+          <th style="text-align:center; width:14%;">Manual Gate Pass No.</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in module.list %}
+        <tr>
+          <td>{{ row.page.label }}</td>
+          {% for cell in row.cells %}
+          <td style="text-align:center;">
+            {% if cell.applicable %}
+            <select name="override_{{ row.page.key }}_{{ cell.action }}" class="form-select form-select-sm"
+                    style="font-size:11px; padding:2px 6px;
+                    {% if cell.override == True %}background:#ECFDF5;color:#047857;{% elif cell.override == False %}background:#FDE8E8;color:#A32D2D;{% endif %}">
+              <option value="inherit" {% if cell.override == None %}selected{% endif %}>Inherit ({% if cell.role_default %}Yes{% else %}No{% endif %})</option>
+              <option value="grant" {% if cell.override == True %}selected{% endif %}>Grant</option>
+              <option value="deny" {% if cell.override == False %}selected{% endif %}>Deny</option>
+            </select>
+            {% else %}
+            <span style="color:#CBD5E1;">—</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+</div>

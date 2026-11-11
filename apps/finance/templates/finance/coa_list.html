@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block title %}Chart of Accounts | Finance{% endblock %}
+{% block page_title %}Chart of Accounts{% endblock %}
+{% block page_subtitle %}Finance{% endblock %}
+{% block content %}
+{% include 'finance/_theme.html' %}
+<div class="fin-theme">
+<div class="fin-card">
+  <div class="fin-card-head">
+    <form method="get" class="d-flex gap-2">
+      <input type="text" name="q" value="{{ search }}" class="form-control form-control-sm" placeholder="Search code or name">
+      <select name="type" class="form-select form-select-sm">
+        <option value="">All types</option>
+        {% for t in account_types %}<option value="{{ t }}" {% if t == selected_type %}selected{% endif %}>{{ t|title }}</option>{% endfor %}
+      </select>
+      <button class="btn btn-sm btn-outline-navy" type="submit">Filter</button>
+    </form>
+    <a href="{% url 'finance:coa_add' %}" class="btn btn-sm btn-navy"><i class="ti ti-plus me-1"></i> Add Account</a>
+  </div>
+  <div class="fin-table-wrap"><table class="table table-hover align-middle mb-0">
+    <thead><tr><th>Code</th><th>Name</th><th>Type</th><th>Parent</th><th>Kind</th><th>Key</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>
+    {% for a in accounts %}
+      <tr>
+        <td><strong>{{ a.ACCOUNT_CODE }}</strong></td>
+        <td>{{ a.ACCOUNT_NAME }}{% if a.IS_LOCKED %} <i class="ti ti-lock text-muted" title="System head"></i>{% endif %}</td>
+        <td>{{ a.ACCOUNT_TYPE|title }}</td>
+        <td>{% if a.PARENT_CODE %}{{ a.PARENT_CODE }}{% else %}-{% endif %}</td>
+        <td>{% if a.IS_POSTING %}Posting{% else %}Group{% endif %}</td>
+        <td>{{ a.SYSTEM_KEY|default:"-" }}</td>
+        <td>{% if a.IS_ACTIVE %}<span class="badge-status badge-ok">Active</span>{% else %}<span class="badge-status badge-neutral">Inactive</span>{% endif %}</td>
+        <td>
+          <a class="btn btn-sm btn-outline-navy" href="{% url 'finance:coa_edit' a.ACCOUNT_ID %}">Edit</a>
+          {% if not a.IS_LOCKED %}
+          <form method="post" action="{% url 'finance:coa_toggle' a.ACCOUNT_ID %}" class="d-inline">
+            {% csrf_token %}
+            <input type="hidden" name="active" value="{% if a.IS_ACTIVE %}0{% else %}1{% endif %}">
+            <button class="btn btn-sm {% if a.IS_ACTIVE %}btn-outline-danger-fin{% else %}btn-outline-navy{% endif %}" type="submit">{% if a.IS_ACTIVE %}Deactivate{% else %}Activate{% endif %}</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="8" class="text-center text-muted py-4">No accounts found.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+<p class="section-note mt-3 mb-0"><i class="ti ti-lock"></i> Locked heads are system accounts that posting rules point to; only their name can be changed.</p>
+</div>
+{% endblock %}

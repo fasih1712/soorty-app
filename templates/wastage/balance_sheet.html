@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:home' %}{% endblock %}
+{% block title %}Item Balance — Soorty{% endblock %}
+{% block page_title %}Item Balance{% endblock %}
+{% block content %}
+<div class="erp-card">
+  <div class="erp-card-header" style="justify-content:space-between;">
+    <span style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:8px;">
+      Balance Records
+      <span class="badge" style="background:#ECFDF5;color:#047857;border:1px solid rgba(4,120,87,.15);font-size:11px;font-weight:700;text-transform:none;letter-spacing:normal;">{{ records|length }} Entries</span>
+    </span>
+    <span style="font-size:12px;color:#6B7280;">As of: {{ now|date:"d M Y, h:i A" }}</span>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px;">
+    <div style="flex:1;min-width:200px;max-width:340px;">
+      {% if sees_all_divisions %}
+      <form method="get" id="divFilterForm">
+        <select name="division" class="form-select form-select-sm" style="font-size:13px;" onchange="document.getElementById('divFilterForm').submit();">
+          <option value="ALL" {% if division_filter == 'ALL' %}selected{% endif %}>All Divisions</option>
+          {% for code, label in division_choices %}<option value="{{ code }}" {% if division_filter == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </form>
+      {% else %}
+      <select class="form-select form-select-sm" disabled style="font-size:13px;">
+        <option>{{ div_label }} — Karachi</option>
+      </select>
+      {% endif %}
+    </div>
+    <a href="?{% if division_filter and division_filter != 'ALL' %}division={{ division_filter }}{% endif %}" class="btn btn-sm btn-outline-secondary" style="font-size:13px;padding:5px 14px;"><i class="ti ti-refresh" style="margin-right:4px;"></i> Refresh</a>
+    <a href="?export=csv{% if division_filter and division_filter != 'ALL' %}&division={{ division_filter }}{% endif %}" class="btn btn-sm btn-outline-secondary" style="font-size:13px;padding:5px 14px;"><i class="ti ti-download" style="margin-right:4px;"></i> Export</a>
+  </div>
+
+  <div style="overflow-x:auto;">
+  <table class="table table-sm table-hover table-col-divided" style="font-size:13px;">
+    <colgroup>
+      {% if sees_all_divisions %}<col style="width:90px;">{% endif %}
+      <col>
+      <col style="width:80px;">
+      <col style="width:100px;">
+      <col style="width:100px;">
+      <col style="width:100px;">
+      <col style="width:90px;">
+      <col style="width:130px;">
+    </colgroup>
+    <thead>
+      <tr>
+        {% if sees_all_divisions %}<th>Division</th>{% endif %}
+        <th>Description</th>
+        <th>Unit</th>
+        <th style="text-align:right;">Total In</th>
+        <th style="text-align:right;">Total Out</th>
+        <th style="text-align:right;font-weight:800;">Balance</th>
+        <th style="text-align:center;">Status</th>
+        <th>Last Movement</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in records %}
+      <tr>
+        {% if sees_all_divisions %}<td><span class="badge" style="background:#F3F4F6;color:#374151;font-size:11px;">{{ r.DIVISION }}</span></td>{% endif %}
+        <td style="font-weight:600;">{{ r.ITEM_NAME }}</td>
+        <td style="color:#6B7280;">{{ r.UNIT|default:"—"|upper }}</td>
+        <td style="text-align:right;color:#047857;font-weight:600;">{{ r.TOTAL_IN|floatformat:0|default:"0" }}</td>
+        <td style="text-align:right;color:#a32d2d;font-weight:600;">{{ r.TOTAL_OUT|floatformat:0|default:"0" }}</td>
+        <td style="text-align:right;font-weight:800;color:#10B981;font-size:14px;">{{ r.BALANCE|floatformat:0|default:"0" }}</td>
+        <td style="text-align:center;">
+          {% if r.STATUS == 'OK' %}
+            <span class="badge" style="background:#ECFDF5;color:#047857;font-size:11px;font-weight:700;">OK</span>
+          {% elif r.STATUS == 'Low' %}
+            <span class="badge" style="background:#faeeda;color:#854f0b;font-size:11px;font-weight:700;">Low</span>
+          {% else %}
+            <span class="badge" style="background:#F3F4F6;color:#6B7280;font-size:11px;font-weight:700;">Zero</span>
+          {% endif %}
+        </td>
+        <td style="color:#6B7280;font-size:12px;">{{ r.LAST_MOVEMENT }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="{% if sees_all_divisions %}8{% else %}7{% endif %}" style="text-align:center;color:#6B7280;padding:28px;">No balance records for this division.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

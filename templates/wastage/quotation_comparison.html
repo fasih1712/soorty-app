@@ -1,0 +1,274 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:quotation_list' %}{% endblock %}
+{% block title %}Quotation Comparison — Soorty{% endblock %}
+{% block page_title %}Quotation Comparison{% endblock %}
+{% block content %}
+
+<div class="erp-card">
+  <form method="get" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+    {% if sees_all_divisions %}
+    <div>
+      <label class="form-label" style="font-size:12px;">Division</label>
+      <select name="division" class="form-select form-select-sm" style="min-width:160px;">
+        {% for code, label in division_choices %}<option value="{{ code }}" {% if division_filter == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    {% else %}
+    <div>
+      <label class="form-label" style="font-size:12px;">Division</label>
+      <div><span class="badge" style="background:#ECFDF5;color:#047857;font-weight:600;padding:6px 10px;"><i class="ti ti-lock" style="font-size:11px;margin-right:4px;"></i>Division {{ division }}</span></div>
+    </div>
+    {% endif %}
+    <div>
+      <label class="form-label" style="font-size:12px;">Month</label>
+      <input type="month" name="month" class="form-control form-control-sm" value="{{ month_param }}" style="min-width:150px;">
+    </div>
+    <button type="submit" class="btn btn-sm btn-outline-secondary" style="font-size:12px;padding:7px 16px;"><i class="ti ti-refresh me-1"></i> View</button>
+  </form>
+</div>
+
+<div class="erp-card">
+  <div class="erp-card-header" style="justify-content:space-between; flex-wrap:nowrap; gap:12px;">
+    <span style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:8px;">
+      Comparison Grid
+      <span class="badge" style="background:#ECFDF5;color:#047857;border:1px solid rgba(4,120,87,.15);font-size:11px;font-weight:700;text-transform:none;letter-spacing:normal;">{{ items|length }} Items Quoted</span>
+    </span>
+    <a href="{% url 'wastage:quotation_comparison_pdf' %}?{{ request.GET.urlencode }}" class="btn btn-sm btn-outline-secondary" style="font-size:12px;padding:5px 14px;white-space:nowrap;"><i class="ti ti-file-type-pdf me-1"></i> Export PDF</a>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-sm table-hover table-col-divided" style="font-size:11px;white-space:nowrap;table-layout:fixed;">
+      <colgroup>
+        <col style="width:230px;">
+        <col style="width:55px;">
+        <col style="width:110px;">
+        <col style="width:80px;">
+        <col style="width:110px;">
+        <col style="width:80px;">
+        <col style="width:110px;">
+        <col style="width:80px;">
+        <col style="width:110px;">
+        <col style="width:80px;">
+        <col style="width:100px;">
+        <col style="width:110px;">
+        <col style="width:80px;">
+        <col style="width:270px;">
+      </colgroup>
+      <thead style="background:#f9f9f9;color:#334155;">
+        <tr>
+          <th rowspan="2" style="vertical-align:middle;">Item</th>
+          <th rowspan="2" style="vertical-align:middle;text-align:center;">UOM</th>
+          <th colspan="2" style="text-align:center;background:#ECFDF5;">Rank 1</th>
+          <th colspan="2" style="text-align:center;">Rank 2</th>
+          <th colspan="2" style="text-align:center;background:#ECFDF5;">Rank 3</th>
+          <th colspan="2" style="text-align:center;">Last Month Winner</th>
+          <th rowspan="2" style="vertical-align:middle;text-align:center;">Yearly High</th>
+          <th colspan="2" style="text-align:center;background:#ECFDF5;">Best Bid (System)</th>
+          <th rowspan="2" style="vertical-align:middle;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <input type="checkbox" id="selectAllCheckbox" {% if not has_unlocked_items %}disabled{% endif %} title="Select all">
+              <span>Manual Selection</span>
+            </div>
+          </th>
+        </tr>
+        <tr>
+          <th style="text-align:center;background:#ECFDF5;">Party</th>
+          <th style="text-align:right;background:#ECFDF5;">Cost</th>
+          <th style="text-align:center;">Party</th>
+          <th style="text-align:right;">Cost</th>
+          <th style="text-align:center;background:#ECFDF5;">Party</th>
+          <th style="text-align:right;background:#ECFDF5;">Cost</th>
+          <th style="text-align:center;">Winner</th>
+          <th style="text-align:right;">Price</th>
+          <th style="text-align:center;background:#ECFDF5;">Party</th>
+          <th style="text-align:right;background:#ECFDF5;">Price</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td><strong>{{ item.ITEM_NAME|default:"—" }}</strong></td>
+          <td style="text-align:center;color:#6B7280;">{{ item.UOM|default:"—" }}</td>
+          <td style="text-align:center;background:#F8FDFB;">{{ item.VENDOR1.VENDOR_NAME|default:"—" }}</td>
+          <td style="text-align:right;background:#F8FDFB;font-weight:700;">{% if item.VENDOR1 %}{{ item.VENDOR1.PRICE|floatformat:2 }}{% else %}—{% endif %}</td>
+          <td style="text-align:center;">{{ item.VENDOR2.VENDOR_NAME|default:"—" }}</td>
+          <td style="text-align:right;">{% if item.VENDOR2 %}{{ item.VENDOR2.PRICE|floatformat:2 }}{% else %}—{% endif %}</td>
+          <td style="text-align:center;background:#F8FDFB;">{{ item.VENDOR3.VENDOR_NAME|default:"—" }}</td>
+          <td style="text-align:right;background:#F8FDFB;">{% if item.VENDOR3 %}{{ item.VENDOR3.PRICE|floatformat:2 }}{% else %}—{% endif %}</td>
+          <td style="text-align:center;">{{ item.LAST_MONTH_WINNER.VENDOR_NAME|default:"—" }}</td>
+          <td style="text-align:right;">{% if item.LAST_MONTH_WINNER %}{{ item.LAST_MONTH_WINNER.PRICE|floatformat:2 }}{% else %}—{% endif %}</td>
+          <td style="text-align:center;">
+            {% if item.YEARLY_HIGH %}
+            <span style="font-weight:600;">{{ item.YEARLY_HIGH.PRICE|floatformat:2 }}</span>
+            <button type="button" class="btn btn-sm yearly-high-info" style="padding:1px 6px;border:none;background:none;color:#6B7280;"
+                    data-item="{{ item.ITEM_NAME|default:'—' }}"
+                    data-month="{{ item.YEARLY_HIGH.MONTH_DISPLAY }}"
+                    data-vendor="{{ item.YEARLY_HIGH.VENDOR_NAME }}"
+                    data-price="{{ item.YEARLY_HIGH.PRICE|floatformat:2 }}"
+                    data-division="{{ item.YEARLY_HIGH.DIVISION }}" title="View detail">
+              <i class="ti ti-eye"></i>
+            </button>
+            {% else %}—{% endif %}
+          </td>
+          <td style="text-align:center;background:#F8FDFB;">{{ item.BEST_BID.VENDOR_NAME|default:"—" }}</td>
+          <td style="text-align:right;background:#F8FDFB;font-weight:700;">{% if item.BEST_BID %}{{ item.BEST_BID.PRICE|floatformat:2 }}{% else %}—{% endif %}</td>
+          <td>
+            {% if item.IS_LOCKED %}
+              {% if item.IS_UNLOCKABLE %}
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                <span class="badge" style="background:#fde8e8;color:#a32d2d;font-size:10px;font-weight:700;padding:5px 10px;" title="Routed to a draft Sales document — not yet shipped"><i class="ti ti-lock" style="font-size:9px;margin-right:3px;"></i>Locked</span>
+                <form method="post" action="{% url 'wastage:quotation_comparison_unlock' %}" style="display:inline;"
+                      onsubmit="return confirm('Unlock this item? This removes it from its draft Sales document and returns it to Open, available to lock to a different party.');">
+                  {% csrf_token %}
+                  <input type="hidden" name="item_id" value="{{ item.ITEM_ID }}">
+                  <input type="hidden" name="month" value="{{ month_param }}">
+                  {% if sees_all_divisions %}<input type="hidden" name="division" value="{{ division_filter }}">{% endif %}
+                  <button type="submit" class="btn btn-sm btn-outline-secondary" style="font-size:10px;padding:3px 10px;"><i class="ti ti-lock-open me-1"></i>Unlock</button>
+                </form>
+              </div>
+              {% else %}
+              <span class="badge" style="background:#fde8e8;color:#a32d2d;font-size:10px;font-weight:700;padding:5px 10px;" title="Already Ship &amp; Posted — cancel the shipment from the Sales document to undo this"><i class="ti ti-lock" style="font-size:9px;margin-right:3px;"></i>Locked (Shipped)</span>
+              {% endif %}
+            {% else %}
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+              <span class="badge" style="background:#FFF7ED;color:#B45309;font-size:9px;font-weight:700;padding:4px 8px;white-space:nowrap;" title="No party locked in yet for this item"><i class="ti ti-clock" style="font-size:9px;margin-right:3px;"></i>Pending</span>
+              <input type="checkbox" class="line-include-checkbox" data-item-id="{{ item.ITEM_ID }}">
+              <select class="form-select form-select-sm line-vendor-select" style="font-size:11px;flex:1;min-width:0;" data-item-id="{{ item.ITEM_ID }}" data-quantity="{{ item.OFFERED_QTY }}">
+                {% for bid in item.BIDS %}
+                <option value="{{ bid.VENDOR_ID }}" data-price="{{ bid.PRICE }}"
+                  {% if bid.VENDOR_ID == item.EFFECTIVE_SELECTED_VENDOR_ID %}selected{% endif %}
+                >{{ bid.VENDOR_NAME }} ({{ bid.PRICE|floatformat:2 }})</option>
+                {% endfor %}
+              </select>
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="14" style="text-align:center;color:#6B7280;padding:24px;">No items received bids for this month yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if has_unlocked_items %}
+  <div class="mt-3 d-flex justify-content-between align-items-center">
+    <span style="font-size:12px;color:#6B7280;"><i class="ti ti-check" style="color:#10B981;margin-right:4px;"></i>The system-suggested Best Bid is pre-checked for each item — tick a different party's box to override it.</span>
+    <button type="button" id="lockAndGenerateSalesBtn" class="btn btn-sm" style="background:#10B981;color:#fff;font-size:13px;padding:8px 22px;font-weight:600;">
+      <i class="ti ti-lock me-1"></i> Lock &amp; Generate Sales
+    </button>
+  </div>
+  {% else %}
+  <div class="mt-3">
+    <span class="badge" style="background:#fde8e8;color:#a32d2d;font-size:12px;padding:6px 12px;"><i class="ti ti-lock" style="margin-right:4px;"></i>Every item for this month has already been locked and routed to Sales.</span>
+  </div>
+  {% endif %}
+</div>
+
+<form method="post" id="lockAndGenerateSalesForm" action="{% url 'wastage:quotation_lock_and_generate_sales' %}" style="display:none;">
+  {% csrf_token %}
+  <input type="hidden" name="month" value="{{ month_param }}">
+  {% if sees_all_divisions %}<input type="hidden" name="division" value="{{ division_filter }}">{% endif %}
+</form>
+
+<!-- Yearly High detail modal -->
+<div class="modal fade" id="yearlyHighModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header" style="border-bottom:1px solid #eee;">
+        <h6 class="modal-title" style="font-weight:600;">Yearly High — <span id="yh_item"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="font-size:13px;">
+        <div class="view-grid">
+          <div class="view-row"><span class="view-label">Month</span><span class="view-value" id="yh_month"></span></div>
+          <div class="view-row"><span class="view-label">Party Name</span><span class="view-value" id="yh_vendor"></span></div>
+          <div class="view-row"><span class="view-label">Highest Price</span><span class="view-value" id="yh_price"></span></div>
+          <div class="view-row"><span class="view-label">Division Origin</span><span class="view-value" id="yh_division"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.view-grid { display:flex; flex-direction:column; gap:8px; }
+.view-row { display:flex; justify-content:space-between; gap:12px; }
+.view-label { color:#6B7280; }
+.view-value { font-weight:500; color:#111827; text-align:right; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('.yearly-high-info').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.getElementById('yh_item').textContent = btn.dataset.item;
+      document.getElementById('yh_month').textContent = btn.dataset.month;
+      document.getElementById('yh_vendor').textContent = btn.dataset.vendor;
+      document.getElementById('yh_price').textContent = btn.dataset.price;
+      document.getElementById('yh_division').textContent = btn.dataset.division;
+      if (window.bootstrap && bootstrap.Modal) {
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('yearlyHighModal')).show();
+      }
+    });
+  });
+
+  // Header "Select All" checkbox: toggles every line-item include checkbox at once.
+  const selectAllBox = document.getElementById('selectAllCheckbox');
+  if (selectAllBox) {
+    selectAllBox.addEventListener('change', function () {
+      document.querySelectorAll('.line-include-checkbox').forEach(function (box) {
+        box.checked = selectAllBox.checked;
+      });
+    });
+  }
+
+  // If every individual box gets checked/unchecked by hand, keep Select All in sync.
+  document.querySelectorAll('.line-include-checkbox').forEach(function (box) {
+    box.addEventListener('change', function () {
+      if (!selectAllBox) return;
+      const all = document.querySelectorAll('.line-include-checkbox');
+      selectAllBox.checked = all.length > 0 && [...all].every(b => b.checked);
+    });
+  });
+
+  // Keep each dropdown's "current price" available for later collection --
+  // no visible effect needed here since the option's own data-price is
+  // read directly at submit time, based on whichever option ends up
+  // selected (system default, or a manual override).
+
+  const lockBtn = document.getElementById('lockAndGenerateSalesBtn');
+  if (lockBtn) {
+    lockBtn.addEventListener('click', function () {
+      const form = document.getElementById('lockAndGenerateSalesForm');
+      form.querySelectorAll('input[name$="[]"]').forEach(el => el.remove());
+
+      let count = 0;
+      document.querySelectorAll('.line-include-checkbox:checked').forEach(function (box) {
+        const itemId = box.dataset.itemId;
+        const select = document.querySelector('.line-vendor-select[data-item-id="' + itemId + '"]');
+        if (!select || !select.value) return; // nothing to route if no vendor is available/selected
+        const opt = select.options[select.selectedIndex];
+        count++;
+        const add = (name, val) => {
+          const h = document.createElement('input');
+          h.type = 'hidden'; h.name = name; h.value = val;
+          form.appendChild(h);
+        };
+        add('selected_item_id[]', itemId);
+        add('selected_vendor_id[]', select.value);
+        add('selected_quantity[]', select.dataset.quantity);
+        add('selected_price[]', opt.getAttribute('data-price'));
+      });
+
+      if (count === 0) {
+        alert('Select at least one item before locking and generating sales.');
+        return;
+      }
+      if (!confirm('Lock this period and generate sales for ' + count + ' item(s)? This cannot be undone.')) return;
+      form.submit();
+    });
+  }
+});
+</script>
+{% endblock %}

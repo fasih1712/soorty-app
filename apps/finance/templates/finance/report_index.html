@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Reports | Finance{% endblock %}
+{% block page_title %}Finance Reports{% endblock %}
+{% block page_subtitle %}Super Admin only. Every report can be downloaded as PDF or Excel.{% endblock %}
+{% block content %}
+{% include 'finance/_theme.html' %}
+<div class="fin-theme">
+  <div class="row g-3">
+    {% for url_name, name, icon, desc in reports %}
+    <div class="col-12 col-md-6 col-lg-4"><a class="report-card" href="{% url url_name %}"><i class="ti {{ icon }}"></i><div class="rname">{{ name }}</div><div class="rdesc">{{ desc }}</div></a></div>
+    {% endfor %}
+  </div>
+  <p class="section-note mt-3 mb-0">Downloads are written to the Finance Audit log. Figures include reversed entries together with their reversals, so they always net out.</p>
+</div>
+{% endblock %}

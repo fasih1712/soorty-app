@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:home' %}{% endblock %}
+{% block title %}{{ title }} — Soorty{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="erp-card">
+  <div class="erp-card-header"><a href="{% url 'wastage:ledger_list' %}" style="font-size:12px;color:#6B7280;">← Back</a></div>
+  <form method="post">
+    {% csrf_token %}
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Division</label>
+        {% if record %}
+        <div><span class="badge" style="background:#ECFDF5;color:#047857;font-weight:600;padding:6px 10px;" title="Division is fixed at creation and cannot be changed"><i class="ti ti-lock" style="font-size:11px;margin-right:4px;"></i>Division {{ record.DIVISION|default:division }}</span></div>
+        {% elif sees_all_divisions %}
+        <select name="division" class="form-select">
+          {% for code, label in division_choices %}<option value="{{ code }}" {% if division == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+        {% else %}
+        <div><span class="badge" style="background:#ECFDF5;color:#047857;font-weight:600;padding:6px 10px;" title="Your assigned division — cannot be changed here"><i class="ti ti-lock" style="font-size:11px;margin-right:4px;"></i>Division {{ division }}</span></div>
+        {% endif %}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Item *</label>
+        <select name="item_id" class="form-select" required>
+          <option value="">-- Select Item --</option>
+          {% for item in items %}<option value="{{ item.ITEM_ID }}" {% if record and record.ITEM_ID == item.ITEM_ID %}selected{% endif %}>{{ item.ITEM_NAME }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Transaction Date *</label>
+        <input type="date" name="txn_date" class="form-control" value="{{ record.TXN_DATE|default:today }}" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Transaction Type *</label>
+        {% if record.TXN_TYPE == 'IN' or record.TXN_TYPE == 'OUT' %}
+        <div><span class="badge" style="background:#ECFDF5;color:#047857;font-weight:600;padding:6px 10px;" title="Auto-posted by Stock Receiving or Gate Pass — cannot be changed here"><i class="ti ti-lock" style="font-size:11px;margin-right:4px;"></i>{{ record.TXN_TYPE }}</span></div>
+        <input type="hidden" name="txn_type" value="{{ record.TXN_TYPE }}">
+        {% else %}
+        <select name="txn_type" class="form-select" required>
+          <option value="">-- Select --</option>
+          <option value="ADJUST" {% if record.TXN_TYPE == 'ADJUST' %}selected{% endif %}>ADJUST</option>
+        </select>
+        <small style="color:#6B7280;font-size:11px;">IN/OUT movements are posted automatically by Stock Receiving and Gate Pass — manual entries here are for Adjust only.</small>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Qty In</label>
+        <input type="number" step="0.001" name="qty_in" class="form-control" value="{{ record.QTY_IN|default:'0' }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Qty Out</label>
+        <input type="number" step="0.001" name="qty_out" class="form-control" value="{{ record.QTY_OUT|default:'0' }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Balance</label>
+        <input type="number" step="0.001" name="balance" class="form-control" value="{{ record.BALANCE|default:'0' }}" readonly style="background:#F3F4F6;" title="Always computed automatically from Qty In/Out — cannot be set manually">
+        <small style="color:#6B7280;font-size:11px;">Computed automatically — not editable.</small>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Ref ID</label>
+        <input type="number" name="ref_id" class="form-control" value="{{ record.REF_ID|default:'' }}">
+      </div>
+    </div>
+    <div class="mt-4 d-flex gap-2">
+      <button type="submit" class="btn btn-dark" style="background:#10B981;border:none;padding:8px 28px;font-size:13px;"><i class="ti ti-device-floppy me-1"></i> Save</button>
+      <a href="{% url 'wastage:ledger_list' %}" class="btn btn-outline-secondary" style="font-size:13px;">Exit</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

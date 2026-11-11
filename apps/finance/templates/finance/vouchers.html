@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}Vouchers | Finance{% endblock %}
+{% block page_title %}Vouchers{% endblock %}
+{% block page_subtitle %}Posted vouchers are permanent. A mistake is corrected by reversal.{% endblock %}
+{% block content %}
+{% include 'finance/_theme.html' %}
+<div class="fin-theme">
+<div class="fin-card">
+  <div class="fin-card-head">
+    <form method="get" class="d-flex gap-2"><input name="q" value="{{ search }}" class="form-control form-control-sm" placeholder="Voucher no, Gate Pass or customer"><button class="btn btn-sm btn-outline-navy" type="submit">Search</button></form>
+    <span class="small text-muted">Latest 200</span>
+  </div>
+  <div class="fin-table-wrap"><table class="table table-hover align-middle mb-0">
+    <thead><tr><th>Voucher</th><th>Date</th><th>Type</th><th>Customer</th><th>Source</th><th class="text-end">Amount</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><a href="{% url 'finance:voucher_view' r.VOUCHER_ID %}"><strong>{{ r.VOUCHER_NO }}</strong></a></td>
+        <td>{{ r.VOUCHER_DATE }}</td><td>{{ r.TYPE_CODE }}</td><td>{{ r.VENDOR_NAME|default:"-" }}</td>
+        <td class="small">{{ r.SOURCE_TYPE|title }}{% if r.SOURCE_ID %} {{ r.SOURCE_ID }}{% endif %}</td>
+        <td class="text-end text-money">{{ r.AMOUNT|floatformat:"2g" }}</td>
+        <td>{% if r.STATUS == 'POSTED' %}<span class="badge-status badge-ok">Posted</span>{% else %}<span class="badge-status badge-neutral">Reversed</span>{% endif %}</td>
+      </tr>
+    {% empty %}<tr><td colspan="7" class="text-center text-muted py-4">No vouchers yet.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+</div>
+{% endblock %}

@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:home' %}{% endblock %}
+{% block title %}Departments — Soorty{% endblock %}
+{% block page_title %}Departments{% endblock %}
+{% block content %}
+
+<div class="erp-card">
+  <div class="erp-card-header" style="justify-content:space-between; flex-wrap:nowrap; gap:12px;">
+    <span style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;flex-shrink:0;display:flex;align-items:center;gap:8px;">
+      Department Records
+      <span class="badge" style="background:#ECFDF5;color:#047857;border:1px solid rgba(4,120,87,.15);font-size:11px;font-weight:700;text-transform:none;letter-spacing:normal;">{{ records|length }} Entries</span>
+    </span>
+    <form method="get" style="display:flex; gap:8px; align-items:center; flex:1; min-width:0; max-width:400px;">
+      <input type="text" name="q" value="{{ search|default:'' }}" class="form-control form-control-sm" placeholder="Search..." style="font-size:13px; flex:1;">
+      <button type="submit" class="btn btn-sm" style="background:#10B981;color:#FFFFFF;font-size:12px;padding:4px 14px;flex-shrink:0;"><i class="ti ti-search"></i></button>
+      {% if search %}<a href="?" class="btn btn-sm btn-outline-secondary" style="font-size:12px;flex-shrink:0;"><i class="ti ti-x"></i> Clear</a>{% endif %}
+    </form>
+    <a href="{% url 'wastage:department_add' %}" class="btn btn-sm" style="background:#10B981;color:#FFFFFF;font-size:12px;padding:5px 14px;white-space:nowrap;">
+      <i class="ti ti-plus me-1"></i> Add Department
+    </a>
+  </div>
+
+  <table class="table table-sm table-hover table-col-divided" style="font-size:13px;">
+    <colgroup>
+      <col style="width:130px;">
+      <col style="width:55px;">
+      <col>
+      <col style="width:200px;">
+      <col style="width:180px;">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>Actions</th>
+        <th>ID</th>
+        <th>Department Name</th>
+        <th>Short Description</th>
+        <th>Location</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in records %}
+      <tr>
+        <td class="action-cell">
+          <button type="button"
+                  class="btn btn-sm action-btn action-view"
+                  title="View"
+                  data-id="{{ r.DEPT_ID }}"
+                  data-name="{{ r.DEPT_NAME }}"
+                  data-short-description="{{ r.SHORT_DESCRIPTION|default:'—' }}"
+                  data-location="{{ r.LOCATION|default:'—' }}"
+                  data-created-by="{{ r.CREATED_BY|default:'—' }}"
+                  data-created-date="{{ r.CREATED_DATE|default:'—' }}"
+                  data-updated-by="{{ r.LAST_UPDATED_BY|default:'—' }}"
+                  data-updated-date="{{ r.LAST_UPDATED_DATE|default:'—' }}">
+            <i class="ti ti-eye"></i>
+          </button>
+          
+          <a href="{% url 'wastage:department_edit' r.DEPT_ID %}" class="btn btn-sm action-btn action-edit" title="Edit"><i class="ti ti-edit"></i></a>
+          <form method="post" action="{% url 'wastage:department_delete' r.DEPT_ID %}" style="display:inline;" onsubmit="return confirm('Delete this department?')">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm action-btn action-delete" title="Delete"><i class="ti ti-trash"></i></button>
+          </form>
+        </td>
+        <td>{{ r.DEPT_ID }}</td>
+        <td><strong>{{ r.DEPT_NAME }}</strong></td>
+        <td>{{ r.SHORT_DESCRIPTION|default:"—" }}</td>
+        <td>{{ r.LOCATION|default:"—" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" style="text-align:center;color:#6B7280;">No departments found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="modal fade" id="viewDeptModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header" style="border-bottom:1px solid #eee;">
+        <h6 class="modal-title" style="font-weight:600;">Department Details — <span id="vw_dept_title"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="font-size:13px;">
+        <div class="view-grid">
+          <div class="view-row"><span class="view-label">Department ID</span><span class="view-value" id="vw_dept_id"></span></div>
+          <div class="view-row"><span class="view-label">Department Name</span><span class="view-value" id="vw_dept_name"></span></div>
+          <div class="view-row"><span class="view-label">Short Description</span><span class="view-value" id="vw_dept_short"></span></div>
+          <div class="view-row"><span class="view-label">Location</span><span class="view-value" id="vw_dept_location"></span></div>
+        </div>
+        <hr style="margin:14px 0;">
+        <div style="color:#6B7280;font-size:11px;font-weight:600;letter-spacing:0.5px;margin-bottom:8px;">INFO</div>
+        <div class="view-grid">
+          <div class="view-row"><span class="view-label">Created By</span><span class="view-value" id="vw_created_by"></span></div>
+          <div class="view-row"><span class="view-label">Created Date</span><span class="view-value" id="vw_created_date"></span></div>
+          <div class="view-row"><span class="view-label">Last Updated By</span><span class="view-value" id="vw_updated_by"></span></div>
+          <div class="view-row"><span class="view-label">Last Updated Date</span><span class="view-value" id="vw_updated_date"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.view-grid { display:flex; flex-direction:column; gap:8px; }
+.view-row { display:flex; justify-content:space-between; gap:12px; }
+.view-label { color:#6B7280; }
+.view-value { font-weight:500; color:#111827; text-align:right; }
+</style>
+
+<script>
+(function () {
+  var TAG = '[soorty:department_list]';
+  console.log(TAG, 'interaction script loaded');
+
+  function showModal(modalEl) {
+    if (!modalEl) { console.error(TAG, 'modal element not found: viewDeptModal'); return; }
+    if (window.bootstrap && bootstrap.Modal) {
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      return;
+    }
+    console.warn(TAG, 'Bootstrap JS not present — using manual modal fallback');
+    modalEl.classList.add('show');
+    modalEl.style.display = 'block';
+    modalEl.removeAttribute('aria-hidden');
+    document.body.classList.add('modal-open');
+    var bd = document.createElement('div');
+    bd.className = 'modal-backdrop fade show';
+    document.body.appendChild(bd);
+    function hide() {
+      modalEl.classList.remove('show'); modalEl.style.display = 'none';
+      modalEl.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('modal-open');
+      document.querySelectorAll('.modal-backdrop').forEach(function (b) { b.remove(); });
+      document.removeEventListener('keydown', onKey);
+    }
+    function onKey(e) { if (e.key === 'Escape') hide(); }
+    bd.addEventListener('click', hide);
+    document.addEventListener('keydown', onKey);
+    modalEl.querySelectorAll('[data-bs-dismiss="modal"], .btn-close').forEach(function (x) { x.addEventListener('click', hide); });
+    modalEl.addEventListener('click', function (e) { if (e.target === modalEl) hide(); });
+  }
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.action-view');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    console.log(TAG, 'eye clicked, id =', btn.dataset.id);
+    try {
+      document.getElementById('vw_dept_title').textContent = btn.dataset.name;
+      document.getElementById('vw_dept_id').textContent = btn.dataset.id;
+      document.getElementById('vw_dept_name').textContent = btn.dataset.name;
+      document.getElementById('vw_dept_short').textContent = btn.dataset.shortDescription;
+      document.getElementById('vw_dept_location').textContent = btn.dataset.location;
+      document.getElementById('vw_created_by').textContent = btn.dataset.createdBy;
+      document.getElementById('vw_created_date').textContent = btn.dataset.createdDate;
+      document.getElementById('vw_updated_by').textContent = btn.dataset.updatedBy;
+      document.getElementById('vw_updated_date').textContent = btn.dataset.updatedDate;
+    } catch (err) { console.error(TAG, 'populate error', err); }
+    showModal(document.getElementById('viewDeptModal'));
+  });
+})();
+</script>
+
+{% endblock %}

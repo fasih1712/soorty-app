@@ -1,0 +1,194 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:home' %}{% endblock %}
+{% block title %}Parties — Soorty{% endblock %}
+{% block page_title %}Parties{% endblock %}
+{% block content %}
+<div class="erp-card">
+  <div class="erp-card-header" style="justify-content:space-between; flex-wrap:nowrap; gap:12px;">
+    <span style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;flex-shrink:0;display:flex;align-items:center;gap:8px;">
+      Party Records
+      <span class="badge" style="background:#ECFDF5;color:#047857;border:1px solid rgba(4,120,87,.15);font-size:11px;font-weight:700;text-transform:none;letter-spacing:normal;">{{ records|length }} Entries</span>
+    </span>
+    <form method="get" style="display:flex; gap:8px; align-items:center; flex:1; min-width:0; max-width:400px;">
+      <input type="text" name="q" value="{{ search }}" class="form-control form-control-sm" placeholder="Search..." style="font-size:13px; flex:1;">
+      <button type="submit" class="btn btn-sm" style="background:#10B981;color:#FFFFFF;font-size:12px;padding:4px 14px;flex-shrink:0;"><i class="ti ti-search"></i></button>
+      {% if search %}<a href="?" class="btn btn-sm btn-outline-secondary" style="font-size:12px;flex-shrink:0;"><i class="ti ti-x"></i> Clear</a>{% endif %}
+    </form>
+    <a href="{% url 'wastage:vendor_add' %}" class="btn btn-sm" style="background:#10B981;color:#FFFFFF;font-size:12px;padding:5px 14px;white-space:nowrap;">
+      <i class="ti ti-plus me-1"></i> Add Party
+    </a>
+  </div>
+  {% if search %}<p style="font-size:12px; color:#6B7280; margin:-8px 0 8px;">Showing results for "<strong>{{ search }}</strong>" — {{ records|length }} found</p>{% endif %}
+  <table class="table table-sm table-hover table-col-divided" style="font-size:13px;">
+    <colgroup>
+      <col style="width:140px;">
+      <col style="width:50px;">
+      <col>
+      <col style="width:110px;">
+      <col style="width:110px;">
+      <col style="width:120px;">
+      <col style="width:120px;">
+      <col style="width:170px;">
+      <col style="width:80px;">
+    </colgroup>
+    <thead>
+      <tr><th>Actions</th><th>ID</th><th>Party Name</th><th>CNIC</th><th>Contact</th><th>Phone</th><th>WhatsApp</th><th>Email</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      {% for r in records %}
+      <tr>
+        <td class="action-cell">
+          <button type="button"
+                  class="btn btn-sm action-btn action-view"
+                  title="View"
+                  data-id="{{ r.VENDOR_ID }}"
+                  data-name="{{ r.VENDOR_NAME }}"
+                  data-contact="{{ r.CONTACT_PERSON|default:'—' }}"
+                  data-phone="{{ r.PHONE|default:'—' }}"
+                  data-whatsapp="{{ r.WHATSAPP_NO|default:'—' }}"
+                  data-email="{{ r.EMAIL|default:'—' }}"
+                  data-address="{{ r.ADDRESS|default:'—' }}"
+                  data-cnic="{{ r.CNIC|default:'—' }}"
+                  data-status="{% if r.IS_ACTIVE %}Active{% else %}Inactive{% endif %}"
+                  data-created-by="{{ r.CREATED_BY|default:'—' }}"
+                  data-created-date="{{ r.CREATED_DATE|default:'—' }}"
+                  data-updated-by="{{ r.LAST_UPDATED_BY|default:'—' }}"
+                  data-updated-date="{{ r.LAST_UPDATED_DATE|default:'—' }}">
+            <i class="ti ti-eye"></i>
+          </button>
+          <a href="{% url 'wastage:vendor_edit' r.VENDOR_ID %}" class="btn btn-sm action-btn action-edit" title="Edit"><i class="ti ti-edit"></i></a>
+          {% if r.CNIC_ATTACHMENT_PATH %}
+          <a href="{% url 'wastage:vendor_cnic_view' r.VENDOR_ID %}" target="_blank" class="btn btn-sm action-btn action-view" title="View CNIC"><i class="ti ti-id"></i></a>
+          {% endif %}
+          <form method="post" action="{% url 'wastage:vendor_delete' r.VENDOR_ID %}" style="display:inline;" onsubmit="return confirm('Delete this party?')">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm action-btn action-delete" title="Delete"><i class="ti ti-trash"></i></button>
+          </form>
+        </td>
+        <td>{{ r.VENDOR_ID }}</td>
+        <td><strong>{{ r.VENDOR_NAME }}</strong></td>
+        <td>{{ r.CNIC|default:"—" }}</td>
+        <td>{{ r.CONTACT_PERSON|default:"—" }}</td>
+        <td>{{ r.PHONE|default:"—" }}</td>
+        <td>{{ r.WHATSAPP_NO|default:"—" }}</td>
+        <td>{{ r.EMAIL|default:"—" }}</td>
+        <td>{% if r.IS_ACTIVE %}<span class="badge" style="background:#ECFDF5;color:#047857;">Active</span>{% else %}<span class="badge" style="background:#fde8e8;color:#a32d2d;">Inactive</span>{% endif %}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="9" style="text-align:center;color:#6B7280;">No parties found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- View Modal (single reusable modal, populated via JS) -->
+<div class="modal fade" id="viewVendorModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header" style="border-bottom:1px solid #eee;">
+        <h6 class="modal-title" style="font-weight:600;">Party Details — <span id="vw_name"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="font-size:13px;">
+        <div class="view-grid">
+          <div class="view-row"><span class="view-label">Party ID</span><span class="view-value" id="vw_id"></span></div>
+          <div class="view-row"><span class="view-label">Party Name</span><span class="view-value" id="vw_name2"></span></div>
+          <div class="view-row"><span class="view-label">CNIC</span><span class="view-value" id="vw_cnic"></span></div>
+          <div class="view-row"><span class="view-label">Contact Person</span><span class="view-value" id="vw_contact"></span></div>
+          <div class="view-row"><span class="view-label">Phone</span><span class="view-value" id="vw_phone"></span></div>
+          <div class="view-row"><span class="view-label">WhatsApp No</span><span class="view-value" id="vw_whatsapp"></span></div>
+          <div class="view-row"><span class="view-label">Email</span><span class="view-value" id="vw_email"></span></div>
+          <div class="view-row"><span class="view-label">Address</span><span class="view-value" id="vw_address"></span></div>
+          <div class="view-row"><span class="view-label">Status</span><span class="view-value" id="vw_status"></span></div>
+        </div>
+        <hr style="margin:14px 0;">
+        <div style="color:#6B7280;font-size:11px;font-weight:600;letter-spacing:0.5px;margin-bottom:8px;">INFO</div>
+        <div class="view-grid">
+          <div class="view-row"><span class="view-label">Created By</span><span class="view-value" id="vw_created_by"></span></div>
+          <div class="view-row"><span class="view-label">Created Date</span><span class="view-value" id="vw_created_date"></span></div>
+          <div class="view-row"><span class="view-label">Last Updated By</span><span class="view-value" id="vw_updated_by"></span></div>
+          <div class="view-row"><span class="view-label">Last Updated Date</span><span class="view-value" id="vw_updated_date"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+
+.view-grid { display:flex; flex-direction:column; gap:8px; }
+.view-row { display:flex; justify-content:space-between; gap:12px; }
+.view-label { color:#6B7280; }
+.view-value { font-weight:500; color:#111827; text-align:right; }
+</style>
+
+
+
+
+<script>
+/* ============================================================
+   List interactions — bulletproof build
+   - event delegation on document (placement / load-order proof)
+   - works WITH Bootstrap JS or WITHOUT it (manual modal fallback)
+   - logs to console so you can confirm it's running (F12 > Console)
+   ============================================================ */
+(function () {
+  var TAG = '[soorty:vendor_list]';
+  console.log(TAG, 'interaction script loaded');
+
+  function showModal(modalEl) {
+    if (!modalEl) { console.error(TAG, 'modal element not found: viewVendorModal'); return; }
+    if (window.bootstrap && bootstrap.Modal) {
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      return;
+    }
+    console.warn(TAG, 'Bootstrap JS not present — using manual modal fallback');
+    modalEl.classList.add('show');
+    modalEl.style.display = 'block';
+    modalEl.removeAttribute('aria-hidden');
+    document.body.classList.add('modal-open');
+    var bd = document.createElement('div');
+    bd.className = 'modal-backdrop fade show';
+    document.body.appendChild(bd);
+    function hide() {
+      modalEl.classList.remove('show'); modalEl.style.display = 'none';
+      modalEl.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('modal-open');
+      document.querySelectorAll('.modal-backdrop').forEach(function (b) { b.remove(); });
+      document.removeEventListener('keydown', onKey);
+    }
+    function onKey(e) { if (e.key === 'Escape') hide(); }
+    bd.addEventListener('click', hide);
+    document.addEventListener('keydown', onKey);
+    modalEl.querySelectorAll('[data-bs-dismiss="modal"], .btn-close').forEach(function (x) { x.addEventListener('click', hide); });
+    modalEl.addEventListener('click', function (e) { if (e.target === modalEl) hide(); });
+  }
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.action-view');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    console.log(TAG, 'eye clicked, id =', btn.dataset.id);
+    try {
+      document.getElementById('vw_name').textContent = btn.dataset.name;
+      document.getElementById('vw_id').textContent = btn.dataset.id;
+      document.getElementById('vw_name2').textContent = btn.dataset.name;
+      document.getElementById('vw_cnic').textContent = btn.dataset.cnic;
+      document.getElementById('vw_contact').textContent = btn.dataset.contact;
+      document.getElementById('vw_phone').textContent = btn.dataset.phone;
+      document.getElementById('vw_whatsapp').textContent = btn.dataset.whatsapp;
+      document.getElementById('vw_email').textContent = btn.dataset.email;
+      document.getElementById('vw_address').textContent = btn.dataset.address;
+      document.getElementById('vw_status').textContent = btn.dataset.status;
+      document.getElementById('vw_created_by').textContent = btn.dataset.createdBy;
+      document.getElementById('vw_created_date').textContent = btn.dataset.createdDate;
+      document.getElementById('vw_updated_by').textContent = btn.dataset.updatedBy;
+      document.getElementById('vw_updated_date').textContent = btn.dataset.updatedDate;
+    } catch (err) { console.error(TAG, 'populate error', err); }
+    showModal(document.getElementById('viewVendorModal'));
+  });
+})();
+</script>
+
+{% endblock %}

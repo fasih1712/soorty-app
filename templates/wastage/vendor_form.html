@@ -1,0 +1,341 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:vendor_list' %}{% endblock %}
+{% block title %}{{ title }} — Soorty{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+
+{% if record is None %}
+<!-- ===================== BULK ADD GRID MODE ===================== -->
+<datalist id="vendorNameSuggestions">
+  {% for n in existing_names %}<option value="{{ n }}"></option>{% endfor %}
+</datalist>
+<form method="post" enctype="multipart/form-data" id="vendorGridForm">
+{% csrf_token %}
+<div class="erp-card">
+  <div class="erp-card-header">
+  </div>
+
+  <div class="grid-scroll-wrapper">
+    <table class="vendor-grid" id="vendorGrid">
+      <thead>
+        <tr>
+          <th style="width:40px;">&nbsp;</th>
+          <th style="min-width:180px;">Party Name *</th>
+          <th style="min-width:150px;">CNIC *</th>
+          <th style="min-width:160px;">Contact Person</th>
+          <th style="min-width:130px;">Phone</th>
+          <th style="min-width:130px;">WhatsApp No</th>
+          <th style="min-width:180px;">Email</th>
+          <th style="min-width:200px;">Address</th>
+          <th style="min-width:170px;">CNIC Attachment</th>
+          <th style="width:70px;">Active</th>
+          <th style="width:90px;">Action</th>
+        </tr>
+      </thead>
+      <tbody id="vendorGridBody">
+        <!-- rows injected here by JS, starting with one blank row -->
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mt-3 d-flex justify-content-between align-items-center">
+    <button type="button" class="btn btn-outline-secondary" id="addRowBtn" style="font-size:13px;">
+      <i class="ti ti-plus"></i> Add New Row
+    </button>
+    <div class="d-flex gap-2">
+      <a href="{% url 'wastage:vendor_list' %}" class="btn btn-outline-secondary" style="font-size:13px;">Exit</a>
+      <button type="button" class="btn btn-dark" id="saveCloseBtn" style="background:#10B981;border:none;padding:8px 28px;font-size:13px;">
+        <i class="ti ti-device-floppy me-1"></i> Save
+      </button>
+    </div>
+  </div>
+</div>
+</form>
+
+<style>
+.grid-scroll-wrapper {
+  overflow-x: auto;
+  overflow-y: visible;
+  width: 100%;
+  border: 1px solid #E5E7EB;
+  border-radius: 6px;
+}
+table.vendor-grid {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+  font-size: 13px;
+}
+table.vendor-grid th {
+  background: #f9f9f9;
+  color: #6B7280;
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid #E5E7EB;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+}
+table.vendor-grid td {
+  padding: 4px 6px;
+  border-bottom: 1px solid #eee;
+  white-space: nowrap;
+  vertical-align: top;
+}
+table.vendor-grid input[type="text"],
+table.vendor-grid input[type="email"] {
+  width: 100%;
+  min-width: 110px;
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 1px solid #E5E7EB;
+  border-radius: 4px;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+table.vendor-grid input.field-error {
+  border-color: #a32d2d;
+  background: #fff5f5;
+}
+table.vendor-grid .row-error-text {
+  color: #a32d2d;
+  font-size: 11px;
+  margin-top: 2px;
+  white-space: nowrap;
+  display: none;
+}
+table.vendor-grid .row-error-text.show {
+  display: block;
+}
+table.vendor-grid .row-num {
+  color: #6B7280;
+  font-size: 12px;
+  text-align: center;
+}
+table.vendor-grid .remove-line-btn {
+  border: 1px solid #f1aeb5;
+  color: #a32d2d;
+  background: #FFFFFF;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+table.vendor-grid .remove-line-btn:hover {
+  background: #fff5f5;
+}
+table.vendor-grid .active-cell {
+  text-align: center;
+}
+</style>
+
+<script>
+(function () {
+  let rowCount = 0;
+
+  const tbody = document.getElementById('vendorGridBody');
+  const addRowBtn = document.getElementById('addRowBtn');
+  const saveCloseBtn = document.getElementById('saveCloseBtn');
+
+  function fieldCell(rowIndex, fieldName, type, required, listId) {
+    const reqAttr = required ? 'required' : '';
+    const listAttr = listId ? ' list="' + listId + '" autocomplete="off"' : '';
+    return '<input type="' + type + '" name="' + fieldName + '_' + rowIndex + '" class="grid-input"' + listAttr + ' ' + reqAttr + '>';
+  }
+
+  function addRow(focusFirst) {
+    rowCount += 1;
+    const idx = rowCount;
+    const tr = document.createElement('tr');
+    tr.dataset.rowIndex = idx;
+    tr.dataset.isNew = "1";
+    tr.innerHTML =
+      '<td class="row-num">' + idx + '</td>' +
+      '<td>' + fieldCell(idx, 'vendor_name', 'text', true, 'vendorNameSuggestions') +
+        '<div class="row-error-text" data-error-for="vendor_name_' + idx + '">Party name is required</div></td>' +
+      '<td>' + fieldCell(idx, 'cnic', 'text', true) +
+        '<div class="row-error-text" data-error-for="cnic_' + idx + '">CNIC is required</div></td>' +
+      '<td>' + fieldCell(idx, 'contact_person', 'text', false) + '</td>' +
+      '<td>' + fieldCell(idx, 'phone', 'text', false) + '</td>' +
+      '<td>' + fieldCell(idx, 'whatsapp_no', 'text', false) + '</td>' +
+      '<td>' + fieldCell(idx, 'email', 'email', false) + '</td>' +
+      '<td>' + fieldCell(idx, 'address', 'text', false) + '</td>' +
+      '<td><input type="file" name="cnic_attachment_' + idx + '" class="grid-input" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" style="font-size:12px;"></td>' +
+      '<td class="active-cell"><input type="checkbox" name="is_active_' + idx + '" checked></td>' +
+      '<td><button type="button" class="remove-line-btn" data-remove="' + idx + '"><i class="ti ti-x"></i> Remove</button></td>';
+    tbody.appendChild(tr);
+
+    const removeBtn = tr.querySelector('.remove-line-btn');
+    removeBtn.addEventListener('click', function () {
+      if (tbody.querySelectorAll('tr').length <= 1) {
+        return;
+      }
+      tr.remove();
+      renumberRows();
+    });
+
+    const inputs = tr.querySelectorAll('input[type="text"], input[type="email"]');
+    const lastInput = inputs[inputs.length - 1];
+    lastInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Tab' && !e.shiftKey) {
+        const isLastRow = (tr === tbody.lastElementChild);
+        if (isLastRow) {
+          const nameInput = tr.querySelector('input[name^="vendor_name_"]');
+          const cnicInput = tr.querySelector('input[name^="cnic_"]');
+          if (nameInput && nameInput.value.trim() !== '' && cnicInput && cnicInput.value.trim() !== '') {
+            e.preventDefault();
+            addRow(true);
+            const newRow = tbody.lastElementChild;
+            const newNameInput = newRow.querySelector('input[name^="vendor_name_"]');
+            if (newNameInput) newNameInput.focus();
+          }
+        }
+      }
+    });
+
+    if (focusFirst) {
+      const nameInput = tr.querySelector('input[name^="vendor_name_"]');
+      if (nameInput) nameInput.focus();
+    }
+  }
+
+  function renumberRows() {
+    const rows = tbody.querySelectorAll('tr');
+    rows.forEach(function (tr, i) {
+      tr.querySelector('.row-num').textContent = i + 1;
+    });
+  }
+
+  function clearErrors() {
+    tbody.querySelectorAll('.field-error').forEach(function (el) {
+      el.classList.remove('field-error');
+    });
+    tbody.querySelectorAll('.row-error-text').forEach(function (el) {
+      el.classList.remove('show');
+    });
+  }
+
+  function validateAll() {
+    clearErrors();
+    let valid = true;
+    const seenNames = {};
+    const rows = tbody.querySelectorAll('tr');
+
+    rows.forEach(function (tr) {
+      const nameInput = tr.querySelector('input[name^="vendor_name_"]');
+      const cnicInput = tr.querySelector('input[name^="cnic_"]');
+      const name = nameInput.value.trim();
+      const cnic = cnicInput.value.trim();
+      const nameErrDiv = tr.querySelector('[data-error-for^="vendor_name_"]');
+      const cnicErrDiv = tr.querySelector('[data-error-for^="cnic_"]');
+
+      let rowValid = true;
+
+      if (!name) {
+        nameInput.classList.add('field-error');
+        nameErrDiv.textContent = 'Party name is required';
+        nameErrDiv.classList.add('show');
+        rowValid = false;
+      } else {
+        const key = name.toLowerCase();
+        if (seenNames[key]) {
+          nameInput.classList.add('field-error');
+          nameErrDiv.textContent = 'Duplicate party name in this batch';
+          nameErrDiv.classList.add('show');
+          rowValid = false;
+        } else {
+          seenNames[key] = true;
+        }
+      }
+
+      if (!cnic) {
+        cnicInput.classList.add('field-error');
+        cnicErrDiv.textContent = 'CNIC is required';
+        cnicErrDiv.classList.add('show');
+        rowValid = false;
+      }
+
+      if (!rowValid) valid = false;
+    });
+
+    return valid;
+  }
+
+  addRowBtn.addEventListener('click', function () {
+    addRow(true);
+  });
+
+  saveCloseBtn.addEventListener('click', function () {
+    if (!validateAll()) {
+      return;
+    }
+    document.getElementById('vendorGridForm').submit();
+  });
+
+  addRow(false);
+})();
+</script>
+
+{% else %}
+<!-- ===================== SINGLE EDIT MODE ===================== -->
+<div class="erp-card">
+  <div class="erp-card-header">
+  </div>
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Party Name *</label>
+        <input type="text" name="vendor_name" class="form-control" value="{{ record.VENDOR_NAME|default:'' }}" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">CNIC *</label>
+        <input type="text" name="cnic" class="form-control" value="{{ record.CNIC|default:'' }}" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">CNIC Attachment</label>
+        <input type="file" name="cnic_attachment" class="form-control" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf">
+        {% if record.CNIC_ATTACHMENT_PATH %}
+        <small style="font-size:11px;"><a href="{% url 'wastage:vendor_cnic_view' record.VENDOR_ID %}" target="_blank">
+          <i class="ti ti-eye"></i> View current attachment</a> — uploading a new file replaces it.</small>
+        {% else %}
+        <small style="color:#6B7280;font-size:11px;">JPEG, PNG, or PDF. Optional — no attachment on file yet.</small>
+        {% endif %}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Contact Person</label>
+        <input type="text" name="contact_person" class="form-control" value="{{ record.CONTACT_PERSON|default:'' }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Phone</label>
+        <input type="text" name="phone" class="form-control" value="{{ record.PHONE|default:'' }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">WhatsApp No</label>
+        <input type="text" name="whatsapp_no" class="form-control" value="{{ record.WHATSAPP_NO|default:'' }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Email</label>
+        <input type="email" name="email" class="form-control" value="{{ record.EMAIL|default:'' }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Address</label>
+        <input type="text" name="address" class="form-control" value="{{ record.ADDRESS|default:'' }}">
+      </div>
+      <div class="col-md-4">
+        <div class="form-check mt-4">
+          <input class="form-check-input" type="checkbox" name="is_active" id="is_active" {% if record.IS_ACTIVE or not record %}checked{% endif %}>
+          <label class="form-check-label" for="is_active" style="font-size:13px;">Active</label>
+        </div>
+      </div>
+    </div>
+    <div class="mt-4 d-flex gap-2">
+      <button type="submit" class="btn btn-dark" style="background:#10B981;border:none;padding:8px 28px;font-size:13px;"><i class="ti ti-device-floppy me-1"></i> Save</button>
+      <a href="{% url 'wastage:vendor_list' %}" class="btn btn-outline-secondary" style="font-size:13px;">Exit</a>
+    </div>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

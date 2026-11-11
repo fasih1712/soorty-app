@@ -1,0 +1,258 @@
+{% extends 'base.html' %}
+{% block title %}Edit User — Soorty{% endblock %}
+{% block page_title %}Edit User{% endblock %}
+{% block nav_users %}active{% endblock %}
+
+{% block content %}
+
+
+<div class="erp-card">
+  <div class="erp-card-header">
+    <a href="{% url 'accounts:user_list' %}" style="font-size:12px; color:#6B7280;">← Back to Users</a>
+  </div>
+
+  <form method="post">
+    {% csrf_token %}
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px; font-weight:500;">Username</label>
+        <input type="text" class="form-control" value="{{ edit_user.username }}" disabled>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px; font-weight:500;">First Name</label>
+        <input type="text" name="first_name" class="form-control" value="{{ edit_user.first_name }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px; font-weight:500;">Last Name</label>
+        <input type="text" name="last_name" class="form-control" value="{{ edit_user.last_name }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px; font-weight:500;">Email</label>
+        <input type="email" name="email" class="form-control" value="{{ edit_user.email }}">
+      </div>
+      <div class="col-md-4">
+        {% if edit_user.datatex_user_id %}
+        <label class="form-label" style="font-size:13px; font-weight:500;">Password</label>
+        <input type="text" class="form-control" value="Managed by Datatex — no local password" disabled style="background:#F3F4F6; font-style:italic; color:#6B7280;">
+        {% else %}
+        <label class="form-label" style="font-size:13px; font-weight:500;">New Password <span style="color:#6B7280; font-size:11px;">(leave blank to keep current)</span></label>
+        <input type="password" name="password" class="form-control">
+        {% endif %}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px; font-weight:500;">Employee ID</label>
+        <input type="text" name="employee_id" class="form-control" value="{{ edit_user.employee_id|default:'' }}">
+      </div>
+      <div class="col-md-4" style="position:relative;">
+        <label class="form-label" style="font-size:13px; font-weight:500;">Datatex User ID</label>
+        <input type="text" id="datatex_search_input" class="form-control"
+               value="{% if edit_user.datatex_user_id %}{{ edit_user.first_name }} - {{ edit_user.datatex_user_id }}{% endif %}"
+               placeholder="Search by name or ID…" autocomplete="off">
+        <input type="hidden" id="datatex_user_id" name="datatex_user_id" value="{{ edit_user.datatex_user_id|default:'' }}">
+        <div id="datatex_dropdown" class="datatex-dropdown"></div>
+        <small style="color:#6B7280;font-size:11px;">If set, this user logs in against the centralized Datatex system instead of their local password — leave blank for a local-only account.</small>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px; font-weight:500;">Role</label>
+        <select name="role" class="form-select">
+          <option value="viewer" {% if edit_user.role == 'viewer' %}selected{% endif %}>Viewer</option>
+          <option value="hr" {% if edit_user.role == 'hr' %}selected{% endif %}>HR Officer</option>
+          <option value="payroll" {% if edit_user.role == 'payroll' %}selected{% endif %}>Payroll Officer</option>
+          <option value="manager" {% if edit_user.role == 'manager' %}selected{% endif %}>Manager</option>
+          <option value="admin" {% if edit_user.role == 'admin' %}selected{% endif %}>Administrator</option>
+        </select>
+        <small style="color:#6B7280;font-size:11px;">Legacy label only — actual page/action access comes from RBAC Roles below.</small>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px; font-weight:500;">Department</label>
+        <input type="text" name="department" class="form-control" value="{{ edit_user.department }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px; font-weight:500;">Division *</label>
+        <select name="division" class="form-select" required>
+          {% for code, label in division_choices %}<option value="{{ code }}" {% if edit_user.division == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+        <small style="color:#6B7280;font-size:11px;">Primary division — still used everywhere in the app today. The multi-select below is the new, additive access list; it doesn't replace this yet.</small>
+      </div>
+      <div class="col-md-8">
+        <label class="form-label" style="font-size:13px; font-weight:500;">Divisions (multi-access)</label>
+        <div style="display:flex; flex-wrap:wrap; gap:14px; padding-top:6px;">
+          {% for code, label in division_choices %}
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="divisions" value="{{ code }}" id="division_{{ code }}"
+                   {% if code in selected_division_codes %}checked{% endif %}>
+            <label class="form-check-label" for="division_{{ code }}" style="font-size:13px;">{{ label }}</label>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px; font-weight:500;">Cross-Division Access</label>
+        <div class="form-check mt-2">
+          <input class="form-check-input" type="checkbox" name="sees_all_divisions" id="sees_all_divisions" {% if edit_user.sees_all_divisions %}checked{% endif %}>
+          <label class="form-check-label" for="sees_all_divisions" style="font-size:13px;">Sees all divisions</label>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px; font-weight:500;">Status</label>
+        <div class="form-check mt-2">
+          <input class="form-check-input" type="checkbox" name="is_active" id="is_active"
+                 {% if edit_user.is_active %}checked{% endif %}>
+          <label class="form-check-label" for="is_active" style="font-size:13px;">Active</label>
+        </div>
+      </div>
+      <div class="col-md-8">
+        <label class="form-label" style="font-size:13px; font-weight:500;">RBAC Roles</label>
+        <div style="display:flex; flex-wrap:wrap; gap:14px; padding-top:6px;">
+          {% for g in all_groups %}
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="groups" value="{{ g.id }}" id="group_{{ g.id }}"
+                   {% if g.id in selected_group_ids %}checked{% endif %}>
+            <label class="form-check-label" for="group_{{ g.id }}" style="font-size:13px;">{{ g.name }}</label>
+          </div>
+          {% empty %}
+          <span style="font-size:12px;color:#6B7280;">No roles defined yet — <a href="{% url 'accounts:role_create' %}">create one</a> first.</span>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <p style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;margin:24px 0 10px;">Individual Permission Overrides</p>
+    {% include 'accounts/_permission_override_matrix.html' %}
+
+    <div class="mt-4 d-flex gap-2">
+      <button type="submit" class="btn btn-dark"
+              style="background:#10B981; border:none; padding:8px 28px; font-size:13px;">
+        <i class="ti ti-device-floppy me-1"></i> Save Changes
+      </button>
+      <a href="{% url 'accounts:user_list' %}" class="btn btn-outline-secondary" style="font-size:13px;">
+        Cancel
+      </a>
+    </div>
+  </form>
+</div>
+
+<style>
+.datatex-dropdown {
+  display: none;
+  position: absolute;
+  z-index: 1000;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0,0,0,.08);
+  margin-top: 2px;
+}
+.datatex-dropdown-item {
+  padding: 7px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #1F2937;
+}
+.datatex-dropdown-item:hover,
+.datatex-dropdown-item.active {
+  background: #ECFDF5;
+  color: #047857;
+}
+.datatex-dropdown-empty {
+  padding: 7px 12px;
+  font-size: 12px;
+  color: #6B7280;
+  font-style: italic;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var searchInput = document.getElementById('datatex_search_input');
+  var idField = document.getElementById('datatex_user_id');
+  var dropdown = document.getElementById('datatex_dropdown');
+  var debounceTimer = null;
+  var activeIndex = -1;
+  var currentResults = [];
+
+  function closeDropdown() {
+    dropdown.style.display = 'none';
+    dropdown.innerHTML = '';
+    activeIndex = -1;
+    currentResults = [];
+  }
+
+  function selectResult(result) {
+    idField.value = result.id;
+    searchInput.value = result.name + ' - ' + result.id;
+    closeDropdown();
+  }
+
+  function renderDropdown(results) {
+    currentResults = results;
+    activeIndex = -1;
+    if (results.length === 0) {
+      dropdown.innerHTML = '<div class="datatex-dropdown-empty">No matches found</div>';
+      dropdown.style.display = 'block';
+      return;
+    }
+    dropdown.innerHTML = results.map(function (r, i) {
+      return '<div class="datatex-dropdown-item" data-index="' + i + '">' +
+             r.name + ' - ' + r.id + '</div>';
+    }).join('');
+    dropdown.style.display = 'block';
+    dropdown.querySelectorAll('.datatex-dropdown-item').forEach(function (el) {
+      el.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        selectResult(results[parseInt(el.dataset.index, 10)]);
+      });
+    });
+  }
+
+  function highlightActive() {
+    dropdown.querySelectorAll('.datatex-dropdown-item').forEach(function (el, i) {
+      el.classList.toggle('active', i === activeIndex);
+    });
+  }
+
+  searchInput.addEventListener('input', function () {
+    var value = searchInput.value.trim();
+    idField.value = '';  // any prior selection (including the one loaded on page open) is invalidated the moment the text changes
+    if (value.length < 2) {
+      closeDropdown();
+      return;
+    }
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(function () {
+      fetch('{% url "accounts:datatex_search" %}?q=' + encodeURIComponent(value))
+        .then(function (r) { return r.json(); })
+        .then(function (data) { renderDropdown(data.results); })
+        .catch(function () { closeDropdown(); });
+    }, 250);
+  });
+
+  searchInput.addEventListener('keydown', function (e) {
+    if (dropdown.style.display !== 'block' || currentResults.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIndex = Math.min(activeIndex + 1, currentResults.length - 1);
+      highlightActive();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIndex = Math.max(activeIndex - 1, 0);
+      highlightActive();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIndex >= 0) selectResult(currentResults[activeIndex]);
+    } else if (e.key === 'Escape') {
+      closeDropdown();
+    }
+  });
+
+  searchInput.addEventListener('blur', function () {
+    setTimeout(closeDropdown, 150);
+  });
+});
+</script>
+{% endblock %}

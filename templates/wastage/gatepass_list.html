@@ -1,0 +1,109 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:home' %}{% endblock %}
+{% block title %}Gate Pass — Soorty{% endblock %}
+{% block page_title %}Gate Pass{% endblock %}
+{% block content %}
+
+<div class="erp-card">
+  <div class="erp-card-header" style="justify-content:space-between; flex-wrap:nowrap; gap:12px;">
+    <span style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;flex-shrink:0;display:flex;align-items:center;gap:8px;">
+      Gate Pass Records
+      <span class="badge" style="background:#ECFDF5;color:#047857;border:1px solid rgba(4,120,87,.15);font-size:11px;font-weight:700;text-transform:none;letter-spacing:normal;">{{ records|length }} Entries</span>
+    </span>
+    <form method="get" style="display:flex; gap:8px; align-items:center; flex:1; min-width:0;">
+      {% if sees_all_divisions %}
+      <select name="division" class="form-select form-select-sm" style="min-width:140px;" onchange="this.form.submit()">
+        <option value="ALL" {% if division_filter == 'ALL' %}selected{% endif %}>All Divisions</option>
+        {% for code, label in division_choices %}<option value="{{ code }}" {% if division_filter == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      {% endif %}
+      <select name="status" class="form-select form-select-sm" style="min-width:130px;" onchange="this.form.submit()">
+        <option value="ALL" {% if status_filter == 'ALL' %}selected{% endif %}>All Statuses</option>
+        <option value="Draft" {% if status_filter == 'Draft' %}selected{% endif %}>Draft</option>
+        <option value="Posted" {% if status_filter == 'Posted' %}selected{% endif %}>Posted</option>
+        <option value="Cancelled" {% if status_filter == 'Cancelled' %}selected{% endif %}>Cancelled</option>
+      </select>
+      <select name="month" class="form-select form-select-sm" style="min-width:130px;" onchange="this.form.submit()">
+        {% for value, label in month_options %}<option value="{{ value }}" {% if month_param == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </form>
+    <div style="display:flex; align-items:center; gap:12px; flex-shrink:0; white-space:nowrap;">
+      <span style="font-size:12px;color:#6B7280;">
+        {% if sees_all_divisions %}<i class="ti ti-world" style="font-size:11px;"></i> All-division access
+        {% else %}<i class="ti ti-lock" style="font-size:11px;"></i> Division {{ division }}{% endif %}
+      </span>
+      <a href="{% url 'wastage:gatepass_pdf' %}?{{ request.GET.urlencode }}" class="btn btn-sm btn-outline-secondary" style="font-size:12px;padding:5px 14px;white-space:nowrap;"><i class="ti ti-file-type-pdf me-1"></i> Export PDF</a>
+      <a href="{% url 'wastage:gatepass_add' %}" class="btn btn-sm" style="background:#10B981;color:#FFFFFF;font-size:12px;padding:5px 14px;white-space:nowrap;"><i class="ti ti-plus me-1"></i> New Gate Pass</a>
+    </div>
+  </div>
+
+  <table class="table table-sm table-hover table-col-divided" style="font-size:13px;">
+    <colgroup>
+      <col style="width:90px;">
+      <col style="width:120px;">
+      <col style="width:120px;">
+      <col style="width:100px;">
+      {% if sees_all_divisions %}<col style="width:90px;">{% endif %}
+      <col>
+      <col style="width:120px;">
+      <col style="width:100px;">
+      <col style="width:150px;">
+      <col style="width:60px;">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>Actions</th>
+        <th>Manual Gate Pass No.</th>
+        <th>Gate Pass No</th>
+        <th>Module</th>
+        {% if sees_all_divisions %}<th>Division</th>{% endif %}
+        <th>Sender / Receiver</th>
+        <th>Gate Pass Date</th>
+        <th>Status</th>
+        <th>Cancelled</th>
+        <th style="text-align:center;">Lines</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in records %}
+      <tr>
+        <td>
+          <a href="{% url 'wastage:gatepass_view' r.GATE_PASS_ID %}" class="btn btn-sm action-btn action-view" title="Open"><i class="ti ti-eye"></i></a>
+          <a href="{% url 'wastage:gatepass_detail_pdf' r.GATE_PASS_ID %}" class="btn btn-sm action-btn action-view" title="Download PDF"><i class="ti ti-file-type-pdf"></i></a>
+          {% if r.STATUS == 'Draft' %}
+          <a href="{% url 'wastage:gatepass_edit' r.GATE_PASS_ID %}" class="btn btn-sm action-btn action-edit" title="Edit Draft"><i class="ti ti-edit"></i></a>
+          <form method="post" action="{% url 'wastage:gatepass_delete' r.GATE_PASS_ID %}" style="display:inline;" onsubmit="return confirm('Delete this Draft? This cannot be undone.')">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm action-btn action-delete" title="Delete Draft"><i class="ti ti-trash"></i></button>
+          </form>
+          {% elif r.STATUS == 'Cancelled' %}
+          <form method="post" action="{% url 'wastage:gatepass_delete' r.GATE_PASS_ID %}" style="display:inline;" onsubmit="return confirm('Archive this Gate Pass? It will be hidden from this list, but the record and its stock ledger history are kept for audit.')">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm action-btn action-delete" title="Archive (hide from list, keep for audit)"><i class="ti ti-trash"></i></button>
+          </form>
+          {% endif %}
+        </td>
+        <td><a href="{% url 'wastage:gatepass_view' r.GATE_PASS_ID %}"><strong style="color:#10B981;">{{ r.GATE_PASS_ID }}</strong></a></td>
+        <td style="color:#6B7280;">{{ r.MANUAL_GATE_PASS_NO|default:"—" }}</td>
+        <td>
+          {% if r.MODULE_TYPE == 'Shipment' %}<span class="badge" style="background:#EFF6FF;color:#1D4ED8;font-size:11px;font-weight:700;">Shipment</span>
+          {% else %}<span class="badge" style="background:#F5F3FF;color:#7C3AED;font-size:11px;font-weight:700;">Transfer</span>{% endif %}
+        </td>
+        {% if sees_all_divisions %}<td><span class="badge" style="background:#F3F4F6;color:#374151;font-size:11px;">{{ r.DIVISION }}</span></td>{% endif %}
+        <td>{{ r.SENDER_NAME|default:"—" }} <span style="color:#CBD5E1;">/</span> {{ r.RECEIVER_NAME|default:"—" }}</td>
+        <td>{{ r.GATE_PASS_DATE|default:"—" }}</td>
+        <td>
+          {% if r.STATUS == 'Posted' %}<span class="badge" style="background:#ECFDF5;color:#047857;font-size:11px;font-weight:700;">Posted</span>
+          {% elif r.STATUS == 'Draft' %}<span class="badge" style="background:#FFFBEB;color:#B45309;font-size:11px;font-weight:700;">Draft</span>
+          {% else %}<span class="badge" style="background:#fde8e8;color:#a32d2d;font-size:11px;font-weight:700;">Cancelled</span>{% endif %}
+        </td>
+        <td style="color:#6B7280;">{{ r.CANCELLED_DATE|default:"—" }}</td>
+        <td style="text-align:center;color:#6B7280;">{{ r.LINE_COUNT }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="{% if sees_all_divisions %}10{% else %}9{% endif %}" style="text-align:center;color:#6B7280;padding:28px;">No Gate Passes found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

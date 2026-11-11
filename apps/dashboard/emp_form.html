@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+{% block title %}Employee Entry — Soorty ERP{% endblock %}
+{% block page_title %}Employee Entry Form{% endblock %}
+
+{% block content %}
+
+{% if messages %}
+  {% for message in messages %}
+    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+      {{ message }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  {% endfor %}
+{% endif %}
+
+<div class="erp-card mb-4">
+  <div class="erp-card-header">
+    <span class="erp-card-title">Add New Employee</span>
+    <span style="font-size:12px; color:#888;">Writes directly to Oracle EMP table</span>
+  </div>
+
+  <form method="post">
+    {% csrf_token %}
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px; font-weight:500;">{{ form.ename.label }}</label>
+        {{ form.ename }}
+        {% if form.ename.errors %}<div style="color:#a32d2d; font-size:12px;">{{ form.ename.errors.0 }}</div>{% endif %}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px; font-weight:500;">{{ form.job.label }}</label>
+        {{ form.job }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px; font-weight:500;">{{ form.deptno.label }}</label>
+        {{ form.deptno }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:13px; font-weight:500;">{{ form.sal.label }}</label>
+        {{ form.sal }}
+        {% if form.sal.errors %}<div style="color:#a32d2d; font-size:12px;">{{ form.sal.errors.0 }}</div>{% endif %}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:13px; font-weight:500;">{{ form.comm.label }}</label>
+        {{ form.comm }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:13px; font-weight:500;">{{ form.hiredate.label }}</label>
+        {{ form.hiredate }}
+        {% if form.hiredate.errors %}<div style="color:#a32d2d; font-size:12px;">{{ form.hiredate.errors.0 }}</div>{% endif %}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:13px; font-weight:500;">{{ form.mgr.label }}</label>
+        {{ form.mgr }}
+      </div>
+    </div>
+
+    <div class="mt-4 d-flex gap-2">
+      <button type="submit" class="btn btn-dark" style="background:#1a2332; border:none; padding:8px 28px; font-size:13px;">
+        <i class="ti ti-device-floppy me-1"></i> Save to Oracle
+      </button>
+      <button type="reset" class="btn btn-outline-secondary" style="font-size:13px;">
+        <i class="ti ti-refresh me-1"></i> Reset
+      </button>
+    </div>
+  </form>
+</div>
+
+<div class="erp-card">
+  <div class="erp-card-header">
+    <span class="erp-card-title">Current EMP Table — Oracle Live</span>
+    <span style="font-size:12px; color:#3b6d11;">{{ employees|length }} records</span>
+  </div>
+  <table class="table table-sm table-hover" style="font-size:13px;">
+    <thead style="color:#888; background:#f9f9f9;">
+      <tr>
+        <th>Emp No</th><th>Name</th><th>Job</th><th>Manager</th>
+        <th>Hire Date</th><th>Salary</th><th>Commission</th>
+        <th>Department</th><th>Location</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for emp in employees %}
+      <tr>
+        <td><strong>{{ emp.EMPNO }}</strong></td>
+        <td>{{ emp.ENAME }}</td>
+        <td><span class="badge" style="background:#e6f1fb; color:#185fa5;">{{ emp.JOB|default:"—" }}</span></td>
+        <td>{{ emp.MGR|default:"—" }}</td>
+        <td>{{ emp.HIREDATE|default:"—" }}</td>
+        <td>${{ emp.SAL|floatformat:0|default:"—" }}</td>
+        <td>{% if emp.COMM %}${{ emp.COMM|floatformat:0 }}{% else %}—{% endif %}</td>
+        <td>{{ emp.DNAME|default:"—" }}</td>
+        <td>{{ emp.LOC|default:"—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

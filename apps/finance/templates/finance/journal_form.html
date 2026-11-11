@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }} | Finance{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block page_subtitle %}Debits must equal credits. Customer Advances and Accounts Receivable are not available here.{% endblock %}
+{% block content %}
+{% include 'finance/_theme.html' %}
+<div class="fin-theme">
+<div class="fin-card" style="max-width:860px;">
+  <div class="fin-card-body">
+    {% if errors %}<div class="fin-alert fin-alert-danger"><ul class="mb-0">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+    <form method="post">
+      {% csrf_token %}
+      <div class="row g-3 mb-3">
+        <div class="col-md-6"><label class="form-label">Division</label>
+          <select class="form-select" name="division" required>{% for code, label in divisions %}<option value="{{ code }}" {% if form.division == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+        <div class="col-md-6"><label class="form-label">Date</label>
+          <input class="form-control" type="date" name="adj_date" value="{{ form.adj_date|default:today }}" max="{{ today }}" required></div>
+      </div>
+      <div class="mb-3"><label class="form-label">Narration (required)</label>
+        <input class="form-control" name="narration" maxlength="300" minlength="5" value="{{ form.narration|default:'' }}" required></div>
+      <div class="fin-table-wrap"><table class="table align-middle" id="jv">
+        <thead><tr><th>Account</th><th class="text-end" style="width:20%">Debit</th><th class="text-end" style="width:20%">Credit</th></tr></thead>
+        <tbody>
+        {% for i in "0123" %}
+          <tr><td><select class="form-select form-select-sm" name="account_id"><option value="">-</option>
+            {% for a in accounts %}{% if a.SYSTEM_KEY != 'CUSTOMER_ADVANCE' and a.SYSTEM_KEY != 'RECEIVABLE' %}<option value="{{ a.ACCOUNT_ID }}">{{ a.ACCOUNT_CODE }} {{ a.ACCOUNT_NAME }}</option>{% endif %}{% endfor %}</select></td>
+            <td><input class="form-control form-control-sm text-end" name="debit" inputmode="decimal"></td>
+            <td><input class="form-control form-control-sm text-end" name="credit" inputmode="decimal"></td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      <button type="button" class="btn btn-sm btn-outline-navy mb-3" onclick="var t=document.querySelector('#jv tbody');t.appendChild(t.rows[0].cloneNode(true));var r=t.rows[t.rows.length-1];r.querySelectorAll('input').forEach(function(i){i.value=''});r.querySelector('select').value='';">+ Add line</button><br>
+      <button class="btn btn-navy" type="submit">Post journal</button>
+      <a class="btn btn-outline-navy" href="{% url 'finance:adjustments' %}">Cancel</a>
+    </form>
+  </div>
+</div>
+</div>
+{% endblock %}

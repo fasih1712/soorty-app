@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+{% block title %}Posting Events | Finance{% endblock %}
+{% block page_title %}Posting Events{% endblock %}
+{% block page_subtitle %}Every Gate Pass is posted to finance automatically. Failures wait here for retry.{% endblock %}
+{% block content %}
+{% include 'finance/_theme.html' %}
+<div class="fin-theme">
+{% if not hooks_enabled %}<div class="fin-alert fin-alert-info">The Gate Pass link to finance is currently <strong>switched off</strong> (FINANCE_HOOKS_ENABLED). Nothing is being posted automatically.</div>{% endif %}
+{% if missed %}
+<div class="fin-card mb-3">
+  <div class="fin-card-head">Gate Passes finance has not seen <span class="badge-status badge-warn">{{ missed|length }}</span></div>
+  <div class="fin-table-wrap"><table class="table align-middle mb-0">
+    <thead><tr><th>Gate Pass</th><th>Date</th><th>Division</th><th>What is needed</th><th></th></tr></thead>
+    <tbody>
+    {% for m in missed %}
+      <tr><td><strong>{{ m.SOURCE_ID }}</strong></td><td>{{ m.EVENT_DATE }}</td><td>{{ m.DIVISION }}</td>
+          <td>{% if m.EVENT_TYPE == 'GP_POSTED' %}Post the sale{% else %}Reverse the sale (Gate Pass was cancelled){% endif %}</td>
+          <td class="text-end"><form method="post" action="{% url 'finance:event_retry' %}">{% csrf_token %}
+            <input type="hidden" name="event_type" value="{{ m.EVENT_TYPE }}"><input type="hidden" name="source_id" value="{{ m.SOURCE_ID }}">
+            <button class="btn btn-sm btn-navy mini-btn" type="submit">Process now</button></form></td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+<div class="fin-card">
+  <div class="fin-card-head">
+    <form method="get" class="d-flex gap-2 align-items-center">
+      <select name="status" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
+        <option value="">All events</option>
+        <option value="FAILED" {% if selected == 'FAILED' %}selected{% endif %}>Failed</option>
+        <option value="POSTED" {% if selected == 'POSTED' %}selected{% endif %}>Posted</option>
+        <option value="SKIPPED" {% if selected == 'SKIPPED' %}selected{% endif %}>Skipped</option>
+      </select>
+    </form>
+    <span class="small text-muted">Latest 200, failures first</span>
+  </div>
+  <div class="fin-table-wrap"><table class="table align-middle mb-0">
+    <thead><tr><th>Gate Pass</th><th>Event</th><th>Date</th><th>Status</th><th>Tries</th><th>Message</th><th>Updated</th><th></th></tr></thead>
+    <tbody>
+    {% for e in rows %}
+      <tr>
+        <td><strong>{{ e.SOURCE_ID }}</strong><br><span class="small text-muted">{{ e.DIVISION }}</span></td>
+        <td>{% if e.EVENT_TYPE == 'GP_POSTED' %}Dispatch posted{% else %}Dispatch cancelled{% endif %}</td>
+        <td>{{ e.EVENT_DATE|default:"-" }}</td>
+        <td>{% if e.STATUS == 'FAILED' %}<span class="badge-status badge-danger">Failed</span>{% elif e.STATUS == 'POSTED' %}<span class="badge-status badge-ok">Posted</span>{% else %}<span class="badge-status badge-neutral">Skipped</span>{% endif %}</td>
+        <td>{{ e.ATTEMPTS }}</td><td class="small text-muted">{{ e.MESSAGE|default:"" }}</td><td class="small">{{ e.WHEN_TS }}<br>{{ e.ACTOR|default:"" }}</td>
+        <td class="text-end">{% if e.STATUS == 'FAILED' %}<form method="post" action="{% url 'finance:event_retry' %}">{% csrf_token %}
+            <input type="hidden" name="event_type" value="{{ e.EVENT_TYPE }}"><input type="hidden" name="source_id" value="{{ e.SOURCE_ID }}">
+            <button class="btn btn-sm btn-navy mini-btn" type="submit">Retry</button></form>{% endif %}</td>
+      </tr>
+    {% empty %}<tr><td colspan="8" class="text-center text-muted py-4">No events yet.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+</div>
+{% endblock %}

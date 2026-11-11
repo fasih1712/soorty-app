@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:home' %}{% endblock %}
+{% block title %}Quotations — Soorty{% endblock %}
+{% block page_title %}Quotations{% endblock %}
+{% block content %}
+<div class="erp-card">
+  <div class="erp-card-header" style="justify-content:space-between;">
+    <span style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:8px;">
+      Quotation Records
+      <span class="badge" style="background:#ECFDF5;color:#047857;border:1px solid rgba(4,120,87,.15);font-size:11px;font-weight:700;text-transform:none;letter-spacing:normal;">{{ records|length }} Entries</span>
+    </span>
+    <a href="{% url 'wastage:quotation_add' %}" class="btn btn-sm" style="background:#10B981;color:#FFFFFF;font-size:12px;padding:5px 14px;"><i class="ti ti-plus me-1"></i> Add Quotation</a>
+  </div>
+  <table class="table table-sm table-hover table-col-divided" style="font-size:13px;">
+    <colgroup>
+      <col style="width:55px;">
+      <col style="width:160px;">
+      <col>
+      <col style="width:100px;">
+      <col style="width:120px;">
+      <col style="width:160px;">
+      <col style="width:100px;">
+    </colgroup>
+    <thead>
+      <tr><th>ID</th><th>Vendor</th><th>Item</th><th style="text-align:right;">Rate/Unit</th><th>Quote Date</th><th>Remarks</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for r in records %}
+      <tr>
+        <td>{{ r.QUOTE_ID }}</td>
+        <td><strong>{{ r.VENDOR_NAME|default:"—" }}</strong></td>
+        <td>{{ r.ITEM_NAME|default:"—" }}</td>
+        <td style="text-align:right;">{{ r.RATE_PER_UNIT|default:"—" }}</td>
+        <td>{{ r.QUOTE_DATE|default:"—" }}</td>
+        <td>{{ r.REMARKS|default:"—"|truncatechars:30 }}</td>
+        <td>
+          <a href="{% url 'wastage:quotation_edit' r.QUOTE_ID %}" class="btn btn-sm pill-edit" style="padding:5px 8px;" title="Edit"><i class="ti ti-edit"></i></a>
+          <form method="post" action="{% url 'wastage:quotation_delete' r.QUOTE_ID %}" style="display:inline;" onsubmit="return confirm('Delete?')">{% csrf_token %}<button type="submit" class="btn btn-sm pill-delete" style="padding:5px 8px;" title="Delete"><i class="ti ti-trash"></i></button></form>
+        </td>
+      </tr>
+      {% empty %}<tr><td colspan="7" style="text-align:center;color:#6B7280;">No quotations found.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

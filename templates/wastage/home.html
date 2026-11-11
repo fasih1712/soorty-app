@@ -1,0 +1,269 @@
+{% extends 'base.html' %}
+{% block show_back %}{% endblock %}
+{% block title %}Wastage Management — Soorty{% endblock %}
+{% block page_title %}Waste Sales Management{% endblock %}
+{% block back_fallback_url %}{% endblock %}
+
+{% block content %}
+<div class="wastage-home">
+
+  <!-- ===================== HERO ===================== -->
+  <div class="wh-hero">
+    <div class="wh-hero-main">
+      <div class="wh-eyebrow">Mill Division · Scrap Recovery</div>
+      <h1 class="wh-title">Welcome back, {{ user.first_name|default:user.username }}</h1>
+      <p class="wh-sub">{% now "l, d F Y" %} &nbsp;·&nbsp; Here is how your wastage stock is moving today.</p>
+    </div>
+    <div class="wh-actions">
+      <a href="{% url 'wastage:receiving_add' %}" class="wh-btn wh-btn-primary"><i class="ti ti-package-import"></i> Add Receiving</a>
+      <a href="{% url 'wastage:gatepass_add' %}" class="wh-btn"><i class="ti ti-clipboard-check"></i> New Gate Pass</a>
+      <a href="{% url 'wastage:ledger_list' %}" class="wh-btn"><i class="ti ti-book"></i> Stock Ledger</a>
+      <a href="{% url 'wastage:monthly_stock_report' %}" class="wh-btn"><i class="ti ti-report-analytics"></i> Monthly Report</a>
+    </div>
+    <i class="ti ti-leaf wh-hero-leaf"></i>
+  </div>
+
+  <!-- ===================== LIVE STOCK ===================== -->
+  <div class="wh-section-label">Stock Right Now <span class="wh-hint">kg items only</span></div>
+  <div class="wh-grid wh-grid-4">
+    <a href="{% url 'wastage:balance_sheet' %}" class="wh-stat wh-stat-green">
+      <div class="wh-stat-chip"><i class="ti ti-scale"></i></div>
+      <div class="wh-kpi-eyebrow">Stock on hand</div>
+      <div class="wh-stat-value">{{ dash.stock_kg|floatformat:"0g" }}<small> kg</small></div>
+      <div class="wh-kpi-sub">{{ dash.items_in_stock }} items in stock</div>
+    </a>
+    <a href="{% url 'wastage:receiving_list' %}" class="wh-stat">
+      <div class="wh-stat-chip"><i class="ti ti-arrow-down-circle"></i></div>
+      <div class="wh-kpi-eyebrow">Received this month</div>
+      <div class="wh-stat-value">{{ dash.month_received_kg|floatformat:"0g" }}<small> kg</small></div>
+      <div class="wh-kpi-sub">From departments</div>
+    </a>
+    <a href="{% url 'wastage:gatepass_list' %}" class="wh-stat">
+      <div class="wh-stat-chip"><i class="ti ti-arrow-up-circle"></i></div>
+      <div class="wh-kpi-eyebrow">Dispatched this month</div>
+      <div class="wh-stat-value">{{ dash.month_dispatched_kg|floatformat:"0g" }}<small> kg</small></div>
+      <div class="wh-kpi-sub">Via posted gate passes</div>
+    </a>
+    <a href="{% url 'wastage:balance_sheet' %}" class="wh-stat {% if dash.items_negative %}wh-stat-warn{% endif %}">
+      <div class="wh-stat-chip"><i class="ti ti-alert-triangle"></i></div>
+      <div class="wh-kpi-eyebrow">Negative balances</div>
+      <div class="wh-stat-value">{{ dash.items_negative }}</div>
+      <div class="wh-kpi-sub">{% if dash.items_negative %}Needs review{% else %}All balances healthy{% endif %}</div>
+    </a>
+  </div>
+
+  <!-- ===================== CHART + TOP ITEMS ===================== -->
+  <div class="wh-split">
+    <div class="wh-panel">
+      <div class="wh-panel-head">
+        <div class="wh-panel-title">Receiving vs Dispatch</div>
+        <div class="wh-legend"><span><i class="wh-dot wh-dot-in"></i>Received</span><span><i class="wh-dot wh-dot-out"></i>Dispatched</span></div>
+      </div>
+      {% if dash.trend %}
+      <div class="wh-bars">
+        {% for m in dash.trend %}
+        <div class="wh-bar-group" title="{{ m.label }}: received {{ m.received|floatformat:"0g" }} kg, dispatched {{ m.dispatched|floatformat:"0g" }} kg">
+          <div class="wh-bar-pair">
+            <div class="wh-bar wh-bar-in" style="height:{{ m.rec_pct }}%"></div>
+            <div class="wh-bar wh-bar-out" style="height:{{ m.out_pct }}%"></div>
+          </div>
+          <div class="wh-bar-label">{{ m.label }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}<div class="wh-empty">No movement data yet.</div>{% endif %}
+    </div>
+
+    <div class="wh-panel">
+      <div class="wh-panel-head"><div class="wh-panel-title">Top Items in Stock</div></div>
+      {% for t in dash.top_items %}
+      <div class="wh-rank">
+        <div class="wh-rank-top"><span class="wh-rank-name">{{ t.name }}</span><span class="wh-rank-val">{{ t.balance|floatformat:"0g" }} {{ t.unit }}</span></div>
+        <div class="wh-rank-track"><div class="wh-rank-fill" style="width:{{ t.pct }}%"></div></div>
+      </div>
+      {% empty %}<div class="wh-empty">No stock on hand.</div>{% endfor %}
+    </div>
+  </div>
+
+  <!-- ===================== RECENT + PIPELINE ===================== -->
+  <div class="wh-split wh-split-rev">
+    <div class="wh-panel">
+      <div class="wh-panel-head">
+        <div class="wh-panel-title">Recent Stock Movements</div>
+        <a href="{% url 'wastage:ledger_list' %}" class="wh-link">View ledger <i class="ti ti-arrow-right"></i></a>
+      </div>
+      {% for r in dash.recent %}
+      <div class="wh-feed">
+        <div class="wh-feed-icon {% if r.is_in %}in{% else %}out{% endif %}"><i class="ti {% if r.is_in %}ti-arrow-down-left{% else %}ti-arrow-up-right{% endif %}"></i></div>
+        <div class="wh-feed-main"><div class="wh-feed-item">{{ r.item }}</div><div class="wh-feed-meta">{{ r.label }} · {{ r.date }}</div></div>
+        <div class="wh-feed-qty {% if r.is_in %}in{% else %}out{% endif %}">{% if r.is_in %}+{% else %}−{% endif %}{{ r.qty|floatformat:"0g" }} {{ r.unit }}</div>
+      </div>
+      {% empty %}<div class="wh-empty">No movements yet.</div>{% endfor %}
+    </div>
+
+    <div class="wh-panel">
+      <div class="wh-panel-head"><div class="wh-panel-title">Sales Pipeline</div></div>
+      <a href="{% url 'wastage:stock_list' %}" class="wh-pipe"><span class="wh-pipe-n">01</span><span class="wh-pipe-t">Listed<small>Stock lots logged</small></span><b>{{ summary.listed|default:0 }}</b></a>
+      <a href="{% url 'wastage:quotation_list' %}" class="wh-pipe"><span class="wh-pipe-n">02</span><span class="wh-pipe-t">Quoted<small>Lots with vendor rates</small></span><b>{{ summary.quoted|default:0 }}</b></a>
+      <a href="{% url 'wastage:quotation_comparison' %}" class="wh-pipe"><span class="wh-pipe-n">03</span><span class="wh-pipe-t">Assigned<small>Awarded to vendors</small></span><b>{{ summary.assigned|default:0 }}</b></a>
+      <a href="{% url 'wastage:sales_list' %}" class="wh-pipe"><span class="wh-pipe-n">04</span><span class="wh-pipe-t">Sold<small>Invoiced to buyers</small></span><b>{{ summary.sold|default:0 }}</b></a>
+    </div>
+  </div>
+
+  <!-- ===================== CATALOGUE METRICS ===================== -->
+  <div class="wh-section-label">Master Data</div>
+  <div class="wh-grid wh-grid-3">
+    <a href="{% url 'wastage:category_list' %}" class="wh-metric">
+      <div class="wh-metric-chip"><i class="ti ti-tag"></i></div>
+      <div class="wh-metric-label">Categories</div>
+      <div class="wh-metric-value">{{ summary.categories|default:0 }}</div>
+      <div class="wh-metric-sub">Material classifications</div>
+    </a>
+    <a href="{% url 'wastage:item_list' %}" class="wh-metric">
+      <div class="wh-metric-chip"><i class="ti ti-box"></i></div>
+      <div class="wh-metric-label">Active items</div>
+      <div class="wh-metric-value">{{ summary.active_items|default:0 }}</div>
+      <div class="wh-metric-sub">In the catalogue</div>
+    </a>
+    <a href="{% url 'wastage:vendor_list' %}" class="wh-metric">
+      <div class="wh-metric-chip"><i class="ti ti-truck"></i></div>
+      <div class="wh-metric-label">Active vendors</div>
+      <div class="wh-metric-value">{{ summary.active_vendors|default:0 }}</div>
+      <div class="wh-metric-sub">Buyers of recovered stock</div>
+    </a>
+  </div>
+
+</div>
+
+<style>
+/* Scoped emerald/slate treatment for the Wastage landing page, matching the reference design */
+.wastage-home { --wh-ink:#0F172A; --wh-muted:#64748B; --wh-line:#F1F5F9; --wh-emerald:#10B981; --wh-emerald-tint:#ECFDF5; --wh-emerald-deep:#065F46; }
+
+.wastage-home .wh-hero {
+  position: relative; border-radius: 24px; padding: 32px 36px; margin-bottom: 20px; overflow: hidden;
+  background: linear-gradient(135deg, #E6EDE8 0%, #F1F6F2 100%);
+  border: 1px solid #D1FAE5;
+}
+.wastage-home .wh-hero::after {
+  content: ""; position: absolute; right: -48px; bottom: -48px; width: 260px; height: 260px;
+  background: rgba(167,243,208,.4); border-radius: 50%; filter: blur(40px);
+}
+.wastage-home .wh-hero-leaf {
+  position: absolute; right: 32px; top: 50%; transform: translateY(-50%);
+  font-size: 128px; line-height: 1; color: #064E3B; opacity: .1; z-index: 0; pointer-events: none;
+}
+@media (max-width: 900px) { .wastage-home .wh-hero-leaf { display: none; } }
+.wastage-home .wh-eyebrow {
+  position: relative; z-index: 1; display: inline-block; color: var(--wh-emerald-deep); background: #D1FAE5;
+  font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  padding: 4px 10px; border-radius: 999px; margin-bottom: 12px;
+}
+.wastage-home .wh-title { position: relative; z-index: 1; color: var(--wh-ink); font-size: 30px; line-height: 1.15; font-weight: 800; letter-spacing: -.02em; margin: 0 0 8px; }
+.wastage-home .wh-sub { position: relative; z-index: 1; color: var(--wh-muted); font-size: 14px; font-weight: 500; max-width: 640px; margin: 0; line-height: 1.6; }
+
+.wastage-home .wh-grid { display: grid; gap: 16px; margin-bottom: 8px; }
+.wastage-home .wh-grid-4 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.wastage-home .wh-grid-3 { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.wastage-home .wh-section-label { font-size: 11px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: .12em; margin: 20px 0 12px; }
+
+/* Pipeline / funnel KPI cards */
+.wastage-home .wh-kpi {
+  position: relative; display: flex; flex-direction: column; justify-content: space-between; text-decoration: none;
+  background: #fff; border: 1px solid var(--wh-line); border-radius: 16px; height: 112px;
+  padding: 18px 20px; box-shadow: 0 1px 2px rgba(15,23,42,.04); transition: all .25s ease-in-out;
+}
+.wastage-home .wh-kpi:hover { box-shadow: 0 8px 20px -8px rgba(15,23,42,.12); border-color: rgba(16,185,129,.3); }
+.wastage-home .wh-kpi-chip {
+  position: absolute; top: 16px; right: 16px; width: 34px; height: 34px; border-radius: 12px;
+  display: grid; place-items: center; font-size: 17px; background: #F8FAFC; color: #94A3B8; transition: all .25s ease-in-out;
+}
+.wastage-home .wh-kpi:hover .wh-kpi-chip { background: var(--wh-emerald-tint); color: var(--wh-emerald-deep); }
+.wastage-home .wh-kpi-eyebrow { color: var(--wh-muted); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.wastage-home .wh-kpi-value { color: var(--wh-ink); font-size: 30px; font-weight: 800; line-height: 1.1; margin-top: 4px; letter-spacing: -.01em; }
+.wastage-home .wh-kpi-sub { color: var(--wh-muted); font-size: 11px; font-weight: 500; }
+
+/* Catalogue metric cards — left accent bar like the reference */
+.wastage-home .wh-metric {
+  position: relative; display: flex; align-items: center; justify-content: space-between; text-decoration: none;
+  background: #fff; border: 1px solid var(--wh-line); border-radius: 16px;
+  padding: 20px 22px; box-shadow: 0 1px 2px rgba(15,23,42,.04); transition: all .25s ease-in-out; overflow: hidden;
+}
+.wastage-home .wh-metric::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--wh-emerald); }
+.wastage-home .wh-metric:hover { box-shadow: 0 8px 20px -8px rgba(15,23,42,.12); }
+.wastage-home .wh-metric-label { color: var(--wh-muted); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.wastage-home .wh-metric-value { color: var(--wh-ink); font-size: 28px; font-weight: 800; line-height: 1.15; margin-top: 4px; }
+.wastage-home .wh-metric-sub { color: var(--wh-muted); font-size: 11px; font-weight: 500; margin-top: 2px; }
+.wastage-home .wh-metric-chip { width: 40px; height: 40px; border-radius: 16px; display: grid; place-items: center; font-size: 19px; background: #F8FAFC; color: #94A3B8; transition: all .25s ease-in-out; }
+.wastage-home .wh-metric:hover .wh-metric-chip { background: var(--wh-emerald-tint); color: var(--wh-emerald-deep); }
+
+@media (max-width: 600px) { .wastage-home .wh-title { font-size: 24px; } }
+/* ---- Homepage v2 additions ---- */
+.wastage-home .wh-hero { display:flex; align-items:center; justify-content:space-between; gap:24px; flex-wrap:wrap; }
+.wastage-home .wh-hero-main { position:relative; z-index:1; min-width:260px; }
+.wastage-home .wh-actions { position:relative; z-index:1; display:flex; flex-wrap:wrap; gap:10px; }
+.wastage-home .wh-btn { display:inline-flex; align-items:center; gap:7px; padding:9px 14px; border-radius:12px; font-size:13px; font-weight:600; text-decoration:none; color:var(--wh-emerald-deep); background:rgba(255,255,255,.75); border:1px solid #D1FAE5; transition:all .2s; }
+.wastage-home .wh-btn:hover { background:#fff; box-shadow:0 6px 16px -8px rgba(6,95,70,.35); transform:translateY(-1px); }
+.wastage-home .wh-btn-primary { background:var(--wh-emerald); border-color:var(--wh-emerald); color:#fff; }
+.wastage-home .wh-btn-primary:hover { background:#059669; color:#fff; }
+.wastage-home .wh-hint { text-transform:none; letter-spacing:0; font-weight:500; color:#94A3B8; margin-left:6px; }
+
+.wastage-home .wh-stat { position:relative; display:block; text-decoration:none; background:#fff; border:1px solid var(--wh-line); border-radius:16px; padding:18px 20px; box-shadow:0 1px 2px rgba(15,23,42,.04); transition:all .25s; overflow:hidden; }
+.wastage-home .wh-stat:hover { transform:translateY(-2px); box-shadow:0 10px 24px -10px rgba(15,23,42,.18); border-color:rgba(16,185,129,.35); }
+.wastage-home .wh-stat-green { background:linear-gradient(135deg,#ECFDF5 0%,#fff 70%); border-color:#A7F3D0; }
+.wastage-home .wh-stat-warn { background:linear-gradient(135deg,#FEF2F2 0%,#fff 70%); border-color:#FECACA; }
+.wastage-home .wh-stat-warn .wh-stat-value { color:#B91C1C; }
+.wastage-home .wh-stat-chip { position:absolute; top:16px; right:16px; width:34px; height:34px; border-radius:12px; display:grid; place-items:center; font-size:17px; background:#F8FAFC; color:#94A3B8; }
+.wastage-home .wh-stat-green .wh-stat-chip { background:#D1FAE5; color:var(--wh-emerald-deep); }
+.wastage-home .wh-stat-value { color:var(--wh-ink); font-size:30px; font-weight:800; line-height:1.15; margin:6px 0 2px; letter-spacing:-.01em; }
+.wastage-home .wh-stat-value small { font-size:14px; font-weight:600; color:var(--wh-muted); }
+
+.wastage-home .wh-split { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(0,1fr); gap:16px; margin-top:16px; }
+.wastage-home .wh-split-rev { grid-template-columns:minmax(0,1.6fr) minmax(0,1fr); }
+@media (max-width:1000px) { .wastage-home .wh-split, .wastage-home .wh-split-rev { grid-template-columns:1fr; } }
+.wastage-home .wh-panel { background:#fff; border:1px solid var(--wh-line); border-radius:16px; padding:20px 22px; box-shadow:0 1px 2px rgba(15,23,42,.04); }
+.wastage-home .wh-panel-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; gap:12px; flex-wrap:wrap; }
+.wastage-home .wh-panel-title { font-size:14px; font-weight:700; color:var(--wh-ink); }
+.wastage-home .wh-link { font-size:12px; font-weight:600; color:var(--wh-emerald-deep); text-decoration:none; }
+.wastage-home .wh-link:hover { text-decoration:underline; }
+.wastage-home .wh-empty { color:var(--wh-muted); font-size:13px; padding:24px 0; text-align:center; }
+
+.wastage-home .wh-legend { display:flex; gap:14px; font-size:11px; font-weight:600; color:var(--wh-muted); }
+.wastage-home .wh-dot { display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:5px; }
+.wastage-home .wh-dot-in, .wastage-home .wh-bar-in { background:var(--wh-emerald); }
+.wastage-home .wh-dot-out, .wastage-home .wh-bar-out { background:#94A3B8; }
+.wastage-home .wh-bars { display:flex; align-items:flex-end; gap:12px; height:210px; padding-top:8px; border-bottom:1px solid var(--wh-line); }
+.wastage-home .wh-bar-group { flex:1; height:100%; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; }
+.wastage-home .wh-bar-pair { flex:1; width:100%; display:flex; align-items:flex-end; justify-content:center; gap:5px; }
+.wastage-home .wh-bar { width:42%; max-width:30px; min-height:2px; border-radius:6px 6px 0 0; transition:height .6s ease, opacity .2s; }
+.wastage-home .wh-bar-group:hover .wh-bar { opacity:.8; }
+.wastage-home .wh-bar-label { font-size:11px; font-weight:600; color:var(--wh-muted); padding:8px 0 2px; }
+
+.wastage-home .wh-rank { margin-bottom:14px; }
+.wastage-home .wh-rank-top { display:flex; justify-content:space-between; gap:10px; font-size:12.5px; margin-bottom:5px; }
+.wastage-home .wh-rank-name { font-weight:600; color:var(--wh-ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wastage-home .wh-rank-val { color:var(--wh-muted); font-weight:600; white-space:nowrap; }
+.wastage-home .wh-rank-track { height:8px; background:#F1F5F9; border-radius:99px; overflow:hidden; }
+.wastage-home .wh-rank-fill { height:100%; background:linear-gradient(90deg,#34D399,#10B981); border-radius:99px; }
+
+.wastage-home .wh-feed { display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--wh-line); }
+.wastage-home .wh-feed:last-child { border-bottom:0; }
+.wastage-home .wh-feed-icon { width:34px; height:34px; border-radius:11px; display:grid; place-items:center; font-size:16px; flex:0 0 auto; }
+.wastage-home .wh-feed-icon.in { background:#ECFDF5; color:#047857; }
+.wastage-home .wh-feed-icon.out { background:#F1F5F9; color:#475569; }
+.wastage-home .wh-feed-main { flex:1; min-width:0; }
+.wastage-home .wh-feed-item { font-size:13px; font-weight:600; color:var(--wh-ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wastage-home .wh-feed-meta { font-size:11px; color:var(--wh-muted); }
+.wastage-home .wh-feed-qty { font-size:13px; font-weight:700; white-space:nowrap; }
+.wastage-home .wh-feed-qty.in { color:#047857; }
+.wastage-home .wh-feed-qty.out { color:#475569; }
+
+.wastage-home .wh-pipe { display:flex; align-items:center; gap:12px; padding:12px; margin:0 -12px; border-radius:12px; text-decoration:none; transition:background .2s; }
+.wastage-home .wh-pipe:hover { background:#F8FAFC; }
+.wastage-home .wh-pipe-n { width:30px; height:30px; border-radius:10px; background:var(--wh-emerald-tint); color:var(--wh-emerald-deep); font-size:11px; font-weight:800; display:grid; place-items:center; }
+.wastage-home .wh-pipe-t { flex:1; font-size:13px; font-weight:700; color:var(--wh-ink); }
+.wastage-home .wh-pipe-t small { display:block; font-size:11px; font-weight:500; color:var(--wh-muted); }
+.wastage-home .wh-pipe b { font-size:20px; font-weight:800; color:var(--wh-ink); }
+.wastage-home .wh-grid-3 { margin-top:0; }
+
+</style>
+{% endblock %}

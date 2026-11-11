@@ -1,0 +1,58 @@
+{% load rbac_tags %}
+{# Expects: matrix_rows -- list of {page, cells:[{action, checked}, ...]} grouped implicitly by page.module_group order #}
+
+<div class="permission-matrix-wrap">
+  {% regroup matrix_rows by page.module_group as module_groups %}
+  {% for module in module_groups %}
+  <div class="matrix-module-group" style="margin-bottom:18px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; background:#F3F4F6; padding:8px 14px; border-radius:6px 6px 0 0; border:1px solid #E2E8F0; border-bottom:none;">
+      <strong style="font-size:12px; color:#334155; text-transform:uppercase; letter-spacing:.04em;">{{ module.grouper }}</strong>
+      <div style="display:flex; gap:10px; font-size:11px;">
+        <a href="#" class="matrix-col-toggle" data-action="view" style="color:#6B7280;">All View</a>
+        <a href="#" class="matrix-col-toggle" data-action="create" style="color:#6B7280;">All Create</a>
+        <a href="#" class="matrix-col-toggle" data-action="edit" style="color:#6B7280;">All Edit</a>
+        <a href="#" class="matrix-col-toggle" data-action="delete" style="color:#6B7280;">All Delete</a>
+      </div>
+    </div>
+    <table class="table table-sm mb-0" style="font-size:13px; border:1px solid #E2E8F0; border-top:none;" data-dynamic-columns="false">
+      <thead style="background:#FAFBFC; color:#6B7280;">
+        <tr>
+          <th style="width:40%;">Page</th>
+          <th style="text-align:center; width:15%;">View</th>
+          <th style="text-align:center; width:15%;">Create</th>
+          <th style="text-align:center; width:15%;">Edit</th>
+          <th style="text-align:center; width:15%;">Delete</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in module.list %}
+        <tr>
+          <td>{{ row.page.label }}</td>
+          {% for cell in row.cells %}
+          <td style="text-align:center;">
+            <input type="checkbox" class="form-check-input matrix-checkbox" data-action="{{ cell.action }}"
+                   name="perm_{{ row.page.key }}_{{ cell.action }}" {% if cell.checked %}checked{% endif %}>
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+(function () {
+  document.querySelectorAll('.matrix-col-toggle').forEach(function (link) {
+    link.addEventListener('click', function (e) {
+      e.preventDefault();
+      const action = this.dataset.action;
+      const group = this.closest('.matrix-module-group');
+      const boxes = group.querySelectorAll(`.matrix-checkbox[data-action="${action}"]`);
+      const shouldCheck = ![...boxes].every(b => b.checked);
+      boxes.forEach(b => b.checked = shouldCheck);
+    });
+  });
+})();
+</script>

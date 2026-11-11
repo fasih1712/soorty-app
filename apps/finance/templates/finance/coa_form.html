@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}{% if existing %}Edit{% else %}Add{% endif %} Account | Finance{% endblock %}
+{% block page_title %}{% if existing %}Edit Account{% else %}Add Account{% endif %}{% endblock %}
+{% block page_subtitle %}Finance{% endblock %}
+{% block content %}
+{% include 'finance/_theme.html' %}
+<div class="fin-theme">
+<div class="fin-card" style="max-width:640px;">
+  <div class="fin-card-body">
+    {% if errors %}<div class="fin-alert fin-alert-danger"><ul class="mb-0">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+    {% if existing and existing.IS_LOCKED %}<div class="fin-alert fin-alert-info">System head: only the name can be changed.</div>{% endif %}
+    <form method="post">
+      {% csrf_token %}
+      <div class="mb-3"><label class="form-label">Account code (4 to 10 digits)</label>
+        <input class="form-control" name="code" value="{{ form.code|default:'' }}" {% if existing and existing.IS_LOCKED %}readonly{% endif %} required></div>
+      <div class="mb-3"><label class="form-label">Account name</label>
+        <input class="form-control" name="name" value="{{ form.name|default:'' }}" maxlength="150" required></div>
+      <div class="mb-3"><label class="form-label">Type</label>
+        <select class="form-select" name="type" {% if existing and existing.IS_LOCKED %}disabled{% endif %}>
+          {% for t in account_types %}<option value="{{ t }}" {% if form.type == t %}selected{% endif %}>{{ t|title }}</option>{% endfor %}
+        </select></div>
+      <div class="mb-3"><label class="form-label">Parent group (optional)</label>
+        <select class="form-select" name="parent_id" {% if existing and existing.IS_LOCKED %}disabled{% endif %}>
+          <option value="">None</option>
+          {% for p in parents %}<option value="{{ p.ACCOUNT_ID }}" {% if form.parent_id|stringformat:"s" == p.ACCOUNT_ID|stringformat:"s" %}selected{% endif %}>{{ p.ACCOUNT_CODE }} - {{ p.ACCOUNT_NAME }}</option>{% endfor %}
+        </select></div>
+      <div class="mb-3"><label class="form-label">Kind</label>
+        <select class="form-select" name="is_posting" {% if existing and existing.IS_LOCKED %}disabled{% endif %}>
+          <option value="1" {% if form.is_posting|stringformat:"s" == "1" %}selected{% endif %}>Posting head (receives entries)</option>
+          <option value="0" {% if form.is_posting|stringformat:"s" == "0" %}selected{% endif %}>Group head (heading only)</option>
+        </select></div>
+      <button class="btn btn-navy" type="submit">Save</button>
+      <a class="btn btn-outline-navy" href="{% url 'finance:coa_list' %}">Cancel</a>
+    </form>
+  </div>
+</div>
+</div>
+{% endblock %}

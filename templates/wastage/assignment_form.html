@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:assignment_list' %}{% endblock %}
+{% block title %}{{ title }} — Soorty{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="erp-card">
+  <div class="erp-card-header"><a href="{% url 'wastage:assignment_list' %}" style="font-size:12px;color:#6B7280;">← Back</a></div>
+  <form method="post">
+    {% csrf_token %}
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Stock List *</label>
+        <select name="list_id" class="form-select" required>
+          <option value="">-- Select --</option>
+          {% for s in stock_lists %}<option value="{{ s.LIST_ID }}" {% if record and record.LIST_ID == s.LIST_ID %}selected{% endif %}>{{ s.LIST_ID }} - {{ s.ITEM_NAME }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Vendor *</label>
+        <select name="vendor_id" class="form-select" required>
+          <option value="">-- Select Vendor --</option>
+          {% for v in vendors %}<option value="{{ v.VENDOR_ID }}" {% if record and record.VENDOR_ID == v.VENDOR_ID %}selected{% endif %}>{{ v.VENDOR_NAME }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Item *</label>
+        <select name="item_id" class="form-select" required>
+          <option value="">-- Select Item --</option>
+          {% for i in items %}<option value="{{ i.ITEM_ID }}" {% if record and record.ITEM_ID == i.ITEM_ID %}selected{% endif %}>{{ i.ITEM_NAME }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Quotation</label>
+        <select name="quote_id" class="form-select">
+          <option value="">-- Select Quotation --</option>
+          {% for q in quotations %}<option value="{{ q.QUOTE_ID }}" {% if record and record.QUOTE_ID == q.QUOTE_ID %}selected{% endif %}>{{ q.QUOTE_ID }} - {{ q.VENDOR_NAME }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Assigned Qty *</label>
+        <input type="number" step="0.001" name="assigned_qty" class="form-control" value="{{ record.ASSIGNED_QTY|default:'' }}" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Agreed Rate *</label>
+        <input type="number" step="0.001" name="agreed_rate" class="form-control" value="{{ record.AGREED_RATE|default:'' }}" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Assigned Date *</label>
+        <input type="date" name="assigned_date" class="form-control" value="{{ record.ASSIGNED_DATE|default:today }}" required>
+      </div>
+    </div>
+    <div class="mt-4 d-flex gap-2">
+      <button type="submit" class="btn btn-dark" style="background:#10B981;border:none;padding:8px 28px;font-size:13px;"><i class="ti ti-device-floppy me-1"></i> Save</button>
+      <a href="{% url 'wastage:assignment_list' %}" class="btn btn-outline-secondary" style="font-size:13px;">Exit</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

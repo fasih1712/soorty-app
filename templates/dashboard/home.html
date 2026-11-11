@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard — Soorty{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+
+{% block content %}
+<p style="font-size:13px; color:#6B7280; margin-bottom:20px;">
+  Welcome back, <strong>{{ user.get_full_name|default:user.username }}</strong>
+</p>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="stat-card">
+      <div class="stat-label">Total Employees</div>
+      <div class="stat-value">1,248</div>
+      <div class="stat-change up">↑ 12 added this month</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="stat-card">
+      <div class="stat-label">Present Today</div>
+      <div class="stat-value">1,102</div>
+      <div class="stat-change up">↑ 88.3% attendance</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="stat-card">
+      <div class="stat-label">Pending Payroll</div>
+      <div class="stat-value">34</div>
+      <div class="stat-change down">↑ Needs review</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="stat-card">
+      <div class="stat-label">Open Requests</div>
+      <div class="stat-value">17</div>
+      <div class="stat-change info">5 marked urgent</div>
+    </div>
+  </div>
+</div>
+
+<div class="erp-card">
+  <div class="erp-card-header">
+  </div>
+  <table class="table table-sm" style="font-size:13px;">
+    <thead style="color:#6B7280;">
+      <tr>
+        <th>Employee</th>
+        <th>Department</th>
+        <th>Action</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Ahmed Raza</td><td>Weaving</td><td>Leave Request</td>
+        <td><span class="badge" style="background:#faeeda;color:#854f0b;">Pending</span></td>
+      </tr>
+      <tr>
+        <td>Sara Malik</td><td>HR</td><td>Profile Update</td>
+        <td><span class="badge" style="background:#ECFDF5;color:#047857;">Approved</span></td>
+      </tr>
+      <tr>
+        <td>Usman Ali</td><td>IT</td><td>Access Request</td>
+        <td><span class="badge" style="background:#e6f1fb;color:#185fa5;">Review</span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}

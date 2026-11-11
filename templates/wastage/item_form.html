@@ -1,0 +1,382 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:item_list' %}{% endblock %}
+{% block title %}{{ title }} — Soorty{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+
+{% if record is None %}
+<datalist id="itemNameSuggestions">
+  {% for n in existing_names %}<option value="{{ n }}"></option>{% endfor %}
+</datalist>
+<div class="erp-card">
+  <div class="erp-card-header">
+  </div>
+
+  <div class="grid-scroll-wrapper">
+    <table class="vendor-grid" id="itemGrid">
+      <thead>
+        <tr>
+          <th style="width:40px;">&nbsp;</th>
+          <th style="min-width:180px;">Category *</th>
+          <th style="min-width:200px;">Item Name *</th>
+          <th style="min-width:250px;">Description</th>
+          <th style="min-width:140px;">Unit (UOM)</th>
+          <th style="width:70px; text-align:center;">Active</th>
+          <th style="width:90px; text-align:center;">Action</th>
+        </tr>
+      </thead>
+      <tbody id="itemGridBody">
+        </tbody>
+    </table>
+  </div>
+
+  <div class="mt-3 d-flex justify-content-between align-items-center">
+    <button type="button" class="btn btn-outline-secondary" id="addRowBtn" style="font-size:13px;">
+      <i class="ti ti-plus"></i> Add New Row
+    </button>
+    <div class="d-flex gap-2">
+      <a href="{% url 'wastage:item_list' %}" class="btn btn-outline-secondary" style="font-size:13px;">Exit</a>
+      <button type="button" class="btn btn-dark" id="saveCloseBtn" style="background:#10B981;border:none;padding:8px 28px;font-size:13px;">
+        <i class="ti ti-device-floppy me-1"></i> Save
+      </button>
+    </div>
+  </div>
+</div>
+
+<form method="post" id="bulkItemForm" style="display:none;">
+  {% csrf_token %}
+  <input type="hidden" name="bulk_count" id="bulkCount" value="0">
+</form>
+
+<style>
+.grid-scroll-wrapper {
+  overflow-x: auto;
+  overflow-y: visible;
+  width: 100%;
+  border: 1px solid #E5E7EB;
+  border-radius: 6px;
+}
+table.vendor-grid {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+  font-size: 13px;
+}
+table.vendor-grid th {
+  background: #f9f9f9;
+  color: #6B7280;
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid #E5E7EB;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+}
+table.vendor-grid td {
+  padding: 4px 6px;
+  border-bottom: 1px solid #eee;
+  white-space: nowrap;
+  vertical-align: top;
+}
+table.vendor-grid input[type="text"],
+table.vendor-grid select {
+  width: 100%;
+  min-width: 110px;
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 1px solid #E5E7EB;
+  border-radius: 4px;
+  box-sizing: border-box;
+  background-color: #FFFFFF;
+}
+table.vendor-grid input.field-error,
+table.vendor-grid select.field-error {
+  border-color: #a32d2d;
+  background: #fff5f5;
+}
+table.vendor-grid .row-error-text {
+  color: #a32d2d;
+  font-size: 11px;
+  margin-top: 2px;
+  display: none;
+}
+table.vendor-grid .row-error-text.show {
+  display: block;
+}
+table.vendor-grid .row-num {
+  color: #6B7280;
+  font-size: 12px;
+  text-align: center;
+  padding-top: 10px;
+}
+table.vendor-grid .remove-line-btn {
+  border: 1px solid #f1aeb5;
+  color: #a32d2d;
+  background: #FFFFFF;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+table.vendor-grid .remove-line-btn:hover {
+  background: #fff5f5;
+}
+table.vendor-grid .active-cell {
+  text-align: center;
+  padding-top: 10px;
+}
+</style>
+
+<script>
+(function () {
+  let rowCount = 0;
+
+  const tbody = document.getElementById('itemGridBody');
+  const addRowBtn = document.getElementById('addRowBtn');
+  const saveCloseBtn = document.getElementById('saveCloseBtn');
+  const bulkForm = document.getElementById('bulkItemForm');
+
+  // Categories Dropdown HTML Builder
+  let catOptions = '<option value="">-- Select Category --</option>';
+  {% for cat in categories %}
+    catOptions += '<option value="{{ cat.CATEGORY_ID }}">{{ cat.CATEGORY_NAME }}</option>';
+  {% endfor %}
+
+  // UOM Dropdown HTML Builder
+  // UOM Dropdown Generation
+let uomOptions = '<option value="">-- Select Unit --</option>';
+{% for uom in uom_list %}
+  uomOptions += '<option value="{{ uom.CODE }}">{{ uom.CODE }} — {{ uom.DESCRIPTION|default:"" }}</option>';
+{% endfor %}
+
+  function addRow(focusFirst) {
+    rowCount += 1;
+    const idx = rowCount;
+    const tr = document.createElement('tr');
+    tr.dataset.rowIndex = idx;
+    tr.dataset.isNew = "1";
+    tr.innerHTML =
+      '<td class="row-num">' + idx + '</td>' +
+      '<td><select name="category_id_' + idx + '" class="grid-input" required>' + catOptions + '</select>' +
+        '<div class="row-error-text" data-error-for="category_id_' + idx + '">Category is required</div></td>' +
+      '<td><input type="text" name="item_name_' + idx + '" class="grid-input" list="itemNameSuggestions" autocomplete="off" required>' +
+        '<div class="row-error-text" data-error-for="item_name_' + idx + '">Item name is required</div></td>' +
+      '<td><input type="text" name="description_' + idx + '" class="grid-input"></td>' +
+      '<td><select name="unit_' + idx + '" class="grid-input">' + uomOptions + '</select></td>' +
+      '<td class="active-cell"><input type="checkbox" name="is_active_' + idx + '" checked></td>' +
+      '<td style="text-align:center;"><button type="button" class="remove-line-btn" data-remove="' + idx + '"><i class="ti ti-x"></i> Remove</button></td>';
+    tbody.appendChild(tr);
+
+    const removeBtn = tr.querySelector('.remove-line-btn');
+    removeBtn.addEventListener('click', function () {
+      if (tbody.querySelectorAll('tr').length <= 1) {
+        return;
+      }
+      tr.remove();
+      renumberRows();
+    });
+
+    // Tab press automation functionality matching vendor format
+    const inputs = tr.querySelectorAll('input[type="text"], select');
+    const lastInput = inputs[inputs.length - 1];
+    lastInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Tab' && !e.shiftKey) {
+        const isLastRow = (tr === tbody.lastElementChild);
+        if (isLastRow) {
+          const catSelect = tr.querySelector('select[name^="category_id_"]');
+          const nameInput = tr.querySelector('input[name^="item_name_"]');
+          if (catSelect && catSelect.value.trim() !== '' && nameInput && nameInput.value.trim() !== '') {
+            e.preventDefault();
+            addRow(true);
+          }
+        }
+      }
+    });
+
+    if (focusFirst) {
+      const catSelect = tr.querySelector('select[name^="category_id_"]');
+      if (catSelect) catSelect.focus();
+    }
+  }
+
+  function renumberRows() {
+    const rows = tbody.querySelectorAll('tr');
+    rows.forEach(function (tr, i) {
+      tr.querySelector('.row-num').textContent = i + 1;
+    });
+  }
+
+  function clearErrors() {
+    tbody.querySelectorAll('.field-error').forEach(function (el) {
+      el.classList.remove('field-error');
+    });
+    tbody.querySelectorAll('.row-error-text').forEach(function (el) {
+      el.classList.remove('show');
+    });
+  }
+
+  function validateAll() {
+    clearErrors();
+    let valid = true;
+    const seenCombos = {};
+    const rows = tbody.querySelectorAll('tr');
+
+    rows.forEach(function (tr) {
+      const catInput = tr.querySelector('select[name^="category_id_"]');
+      const nameInput = tr.querySelector('input[name^="item_name_"]');
+      const catVal = catInput.value.trim();
+      const nameVal = nameInput.value.trim();
+      
+      const catErrDiv = tr.querySelector('[data-error-for^="category_id_"]');
+      const nameErrDiv = tr.querySelector('[data-error-for^="item_name_"]');
+
+      let rowValid = true;
+
+      if (!catVal) {
+        catInput.classList.add('field-error');
+        catErrDiv.classList.add('show');
+        rowValid = false;
+      }
+
+      if (!nameVal) {
+        nameInput.classList.add('field-error');
+        nameErrDiv.textContent = 'Item name is required';
+        nameErrDiv.classList.add('show');
+        rowValid = false;
+      }
+
+      if (catVal && nameVal) {
+        const comboKey = catVal + '_' + nameVal.toLowerCase();
+        if (seenCombos[comboKey]) {
+          nameInput.classList.add('field-error');
+          nameErrDiv.textContent = 'Duplicate item in this category';
+          nameErrDiv.classList.add('show');
+          rowValid = false;
+        } else {
+          seenCombos[comboKey] = true;
+        }
+      }
+
+      if (!rowValid) valid = false;
+    });
+
+    return valid;
+  }
+
+  addRowBtn.addEventListener('click', function () {
+    addRow(true);
+  });
+
+  saveCloseBtn.addEventListener('click', function () {
+    if (!validateAll()) {
+      return;
+    }
+    bulkForm.innerHTML = '{% csrf_token %}';
+    const rows = tbody.querySelectorAll('tr');
+    let count = 0;
+    
+    rows.forEach(function (tr) {
+      const idx = tr.dataset.rowIndex;
+      const nameInp = tr.querySelector('input[name="item_name_' + idx + '"]');
+      if (!nameInp) return;
+      const nameVal = nameInp.value.trim();
+      if (!nameVal) return;
+      count += 1;
+      
+      ['category_id', 'item_name', 'unit', 'description'].forEach(function (field) {
+        const srcInput = tr.querySelector('[name="' + field + '_' + idx + '"]');
+        const hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.name = field + '[]';
+        hidden.value = srcInput ? srcInput.value.trim() : '';
+        bulkForm.appendChild(hidden);
+      });
+      
+      const activeInput = tr.querySelector('input[name="is_active_' + idx + '"]');
+      const activeHidden = document.createElement('input');
+      activeHidden.type = 'hidden';
+      activeHidden.name = 'is_active[]';
+      activeHidden.value = (activeInput && activeInput.checked) ? 'on' : 'off';
+      bulkForm.appendChild(activeHidden);
+    });
+    
+    const countHidden = document.createElement('input');
+    countHidden.type = 'hidden';
+    countHidden.name = 'bulk_count';
+    countHidden.value = count;
+    bulkForm.appendChild(countHidden);
+
+    bulkForm.submit();
+  });
+
+  addRow(false);
+})();
+</script>
+
+{% else %}
+<div class="erp-card">
+  <div class="erp-card-header">
+  </div>
+  <form method="post">
+    {% csrf_token %}
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Item Code</label>
+        <div><span class="badge" style="background:#ECFDF5;color:#047857;font-weight:700;padding:6px 10px;" title="Auto-generated, not editable"><i class="ti ti-lock" style="font-size:11px;margin-right:4px;"></i>{{ record.ITEM_CODE|default:"—" }}</span></div>
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Category *</label>
+        <select name="category_id" class="form-select" required style="font-size: 13px;">
+          <option value="">-- Select Category --</option>
+          {% for cat in categories %}
+          <option value="{{ cat.CATEGORY_ID }}" {% if record.CATEGORY_ID == cat.CATEGORY_ID %}selected{% endif %}>
+            {{ cat.CATEGORY_NAME }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Item Name *</label>
+        <input type="text" name="item_name" class="form-control" value="{{ record.ITEM_NAME|default:'' }}" required style="font-size: 13px;">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Description</label>
+        <input type="text" name="description" class="form-control" value="{{ record.DESCRIPTION|default:'' }}" style="font-size: 13px;">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Unit (UOM)</label>
+        <select name="unit" class="form-select" style="font-size: 13px;">
+          <option value="">-- Select Unit --</option>
+          {% for uom in uom_list %}
+          <option value="{{ uom.CODE }}" {% if record.UNIT == uom.CODE %}selected{% endif %}>
+            {{ uom.CODE }} — {{ uom.DESCRIPTION|default:"" }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-md-4">
+        <div class="form-check mt-4">
+          <input class="form-check-input" type="checkbox" name="is_active" id="is_active"
+                 {% if record.IS_ACTIVE or not record %}checked{% endif %}>
+          <label class="form-check-label" for="is_active" style="font-size:13px;">Active</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-4 d-flex gap-2">
+      <button type="submit" class="btn btn-dark" style="background:#10B981;border:none;padding:8px 28px;font-size:13px;">
+        <i class="ti ti-device-floppy me-1"></i> Save
+      </button>
+      <a href="{% url 'wastage:item_list' %}" class="btn btn-outline-secondary" style="font-size:13px;">Exit</a>
+    </div>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

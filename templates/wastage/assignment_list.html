@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:home' %}{% endblock %}
+{% block title %}Vendor Assignments — Soorty{% endblock %}
+{% block page_title %}Vendor Assignments{% endblock %}
+{% block content %}
+<div class="erp-card">
+  <div class="erp-card-header" style="justify-content:space-between;">
+    <span style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:8px;">
+      Assignment Records
+      <span class="badge" style="background:#ECFDF5;color:#047857;border:1px solid rgba(4,120,87,.15);font-size:11px;font-weight:700;text-transform:none;letter-spacing:normal;">{{ records|length }} Entries</span>
+    </span>
+    <a href="{% url 'wastage:assignment_add' %}" class="btn btn-sm" style="background:#10B981;color:#FFFFFF;font-size:12px;padding:5px 14px;"><i class="ti ti-plus me-1"></i> Add Assignment</a>
+  </div>
+  <table class="table table-sm table-hover table-col-divided" style="font-size:13px;">
+    <colgroup>
+      <col style="width:55px;">
+      <col style="width:160px;">
+      <col>
+      <col style="width:110px;">
+      <col style="width:110px;">
+      <col style="width:130px;">
+      <col style="width:100px;">
+    </colgroup>
+    <thead>
+      <tr><th>ID</th><th>Vendor</th><th>Item</th><th style="text-align:right;">Assigned Qty</th><th style="text-align:right;">Agreed Rate</th><th>Assigned Date</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for r in records %}
+      <tr>
+        <td>{{ r.ASSIGN_ID }}</td>
+        <td><strong>{{ r.VENDOR_NAME|default:"—" }}</strong></td>
+        <td>{{ r.ITEM_NAME|default:"—" }}</td>
+        <td style="text-align:right;">{{ r.ASSIGNED_QTY|default:"—" }}</td>
+        <td style="text-align:right;">{{ r.AGREED_RATE|default:"—" }}</td>
+        <td>{{ r.ASSIGNED_DATE|default:"—" }}</td>
+        <td>
+          <a href="{% url 'wastage:assignment_edit' r.ASSIGN_ID %}" class="btn btn-sm pill-edit" style="padding:5px 8px;" title="Edit"><i class="ti ti-edit"></i></a>
+          <form method="post" action="{% url 'wastage:assignment_delete' r.ASSIGN_ID %}" style="display:inline;" onsubmit="return confirm('Delete?')">{% csrf_token %}<button type="submit" class="btn btn-sm pill-delete" style="padding:5px 8px;" title="Delete"><i class="ti ti-trash"></i></button></form>
+        </td>
+      </tr>
+      {% empty %}<tr><td colspan="7" style="text-align:center;color:#6B7280;">No assignments found.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Soorty{% endblock %}</title>
+  {% load static %}
+  {% load rbac_tags %}
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css" rel="stylesheet">
+  <link href="{% static 'css/main.css' %}" rel="stylesheet">
+  <style>
+    /* Sidebar: logo + user card stay put, the menu in between scrolls on its own */
+    .sidebar { display: flex; flex-direction: column; }
+    .sidebar .sidebar-scroll-area {
+      flex: 1 1 auto; min-height: 0; overflow-y: auto !important; overflow-x: hidden;
+      overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.35) transparent;
+    }
+    .sidebar .sidebar-footer { flex: 0 0 auto; }
+    .sidebar .sidebar-scroll-area::-webkit-scrollbar { width: 8px; }
+    .sidebar .sidebar-scroll-area::-webkit-scrollbar-track { background: transparent; }
+    .sidebar .sidebar-scroll-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,.28); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+    .sidebar .sidebar-scroll-area::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.5); background-clip: padding-box; border: 2px solid transparent; }
+  </style>
+</head>
+<body data-back-fallback="{% block back_fallback_url %}/wastage/{% endblock %}">
+
+{% if user.is_authenticated %}
+<div class="app-shell">
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-scroll-area">
+      <div class="sidebar-logo">
+        <div class="sidebar-logo-row">
+          <img src="{% static 'img/Soory_logo_white.png' %}" alt="Soorty" class="sidebar-logo-image">
+        </div>
+        <span class="logo-sub sidebar-logo-sub">Mill Division</span>
+      </div>
+
+      <div class="sidebar-summary">
+        <div class="sidebar-summary-label">Quick Summary</div>
+        <div class="sidebar-summary-grid">
+          <div>
+            <div class="ss-label">Listed</div>
+            <div class="ss-value">{{ sidebar_listed|default:"0"|stringformat:"02d" }}</div>
+          </div>
+          <div>
+            <div class="ss-label">Sold</div>
+            <div class="ss-value">{{ sidebar_sold|default:"0"|stringformat:"02d" }}</div>
+          </div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          <span class="nav-label">Main</span>
+	  <a href="{% url 'wastage:home' %}" class="nav-item active">
+  	    <i class="ti ti-layout-dashboard"></i> Waste Sales Management
+	  </a>
+        </div>
+
+        <div class="nav-section">
+          <span class="nav-label">Modules</span>
+
+          <button class="nav-accordion-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#navMasterSetup" aria-expanded="false" aria-controls="navMasterSetup">
+            <i class="ti ti-database"></i> Master Setup
+            <i class="ti ti-chevron-down nav-accordion-arrow"></i>
+          </button>
+          <div class="collapse" id="navMasterSetup">
+            <a href="{% url 'wastage:category_list' %}" class="nav-subitem"><i class="ti ti-tag"></i> Categories</a>
+            <a href="{% url 'wastage:item_list' %}" class="nav-subitem"><i class="ti ti-box"></i> Items</a>
+            <a href="{% url 'wastage:vendor_list' %}" class="nav-subitem"><i class="ti ti-truck"></i> Vendors</a>
+            <a href="{% url 'wastage:department_list' %}" class="nav-subitem"><i class="ti ti-building"></i> Departments</a>
+            <a href="{% url 'wastage:group_type_list' %}" class="nav-subitem"><i class="ti ti-layout-grid"></i> Group Types (Masters)</a>
+          </div>
+
+          <button class="nav-accordion-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#navStockOps" aria-expanded="false" aria-controls="navStockOps">
+            <i class="ti ti-packages"></i> Stock Operations
+            <i class="ti ti-chevron-down nav-accordion-arrow"></i>
+          </button>
+          <div class="collapse" id="navStockOps">
+            <a href="{% url 'wastage:msl_snapshot' %}" class="nav-subitem"><i class="ti ti-calendar"></i> Monthly Stock List</a>
+            <a href="{% url 'wastage:ledger_list' %}" class="nav-subitem"><i class="ti ti-book"></i> Stock Ledger</a>
+            <a href="{% url 'wastage:balance_sheet' %}" class="nav-subitem"><i class="ti ti-scale"></i> Item Balance</a>
+            <a href="{% url 'wastage:receiving_list' %}" class="nav-subitem"><i class="ti ti-package-import"></i> Stock Receiving</a>
+          </div>
+
+          <button class="nav-accordion-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#navSales" aria-expanded="false" aria-controls="navSales">
+            <i class="ti ti-report-money"></i> Sales
+            <i class="ti ti-chevron-down nav-accordion-arrow"></i>
+          </button>
+          <div class="collapse" id="navSales">
+            <a href="{% url 'wastage:quotation_list' %}" class="nav-subitem"><i class="ti ti-clipboard-list"></i> Quotations</a>
+            <a href="{% url 'wastage:quotation_comparison' %}" class="nav-subitem"><i class="ti ti-arrows-diff"></i> Quotation Comparison</a>
+            <a href="{% url 'wastage:assignment_list' %}" class="nav-subitem"><i class="ti ti-user-check"></i> Vendor Assignments</a>
+            <a href="{% url 'wastage:sales_list' %}" class="nav-subitem"><i class="ti ti-trending-up"></i> Sales</a>
+            {# Shipments hidden from nav until further notice -- uncomment to restore #}
+            {# <a href="{% url 'wastage:shipment_list' %}" class="nav-subitem"><i class="ti ti-truck"></i> Shipments</a> #}
+            <a href="{% url 'wastage:gatepass_list' %}" class="nav-subitem"><i class="ti ti-clipboard-check"></i> Gate Pass</a>
+            <a href="{% url 'wastage:whatsapp_list' %}" class="nav-subitem"><i class="ti ti-brand-whatsapp"></i> WhatsApp Log</a>
+          </div>
+        </div>
+
+        <div class="nav-section">
+          <span class="nav-label">Reports</span>
+          <a href="#" class="nav-item"><i class="ti ti-chart-bar"></i> Analytics</a>
+          <a href="{% url 'wastage:stock_balance_report' %}" class="nav-item"><i class="ti ti-file-text"></i> Stock Balance Report</a>
+          <a href="{% url 'wastage:monthly_stock_report' %}" class="nav-item"><i class="ti ti-report-analytics"></i> Monthly Stock Report</a>
+        </div>
+
+        {% has_permission 'audit_log' 'view' as can_view_audit %}
+        {% has_permission 'user_management' 'view' as can_view_users %}
+        {% has_permission 'role_management' 'view' as can_view_roles %}
+        {% if can_view_audit or can_view_users or can_view_roles or user.is_superuser %}
+        <div class="nav-section">
+          <span class="nav-label">System</span>
+          {% if can_view_audit %}
+          <a href="{% url 'wastage:audit_log' %}" class="nav-item">
+            <i class="ti ti-shield-check"></i> Audit Log
+          </a>
+          {% endif %}
+          {% if can_view_users %}
+          <a href="{% url 'accounts:user_list' %}" class="nav-item {% block nav_users %}{% endblock %}">
+            <i class="ti ti-user-cog"></i> User Management
+          </a>
+          {% endif %}
+          {% if can_view_roles %}
+          <a href="{% url 'accounts:role_list' %}" class="nav-item">
+            <i class="ti ti-shield-cog"></i> Role Management
+          </a>
+          {% endif %}
+          <a href="#" class="nav-item"><i class="ti ti-settings"></i> Settings</a>
+          {% if user.is_superuser %}
+          <a href="/admin/" class="nav-item"><i class="ti ti-terminal-2"></i> Django Admin</a>
+          {% endif %}
+        </div>
+        {% endif %}
+      </nav>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar">{{ user.first_name|first|upper }}{{ user.last_name|first|upper }}</div>
+        <div>
+          <div class="user-name">{{ user.get_full_name|default:user.username }}</div>
+          <div class="user-role">{{ user.get_role_display }}</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <div class="main-content">
+
+    <!-- Top Bar -->
+    <header class="topbar">
+       <div class="topbar-left">
+        <button class="sidebar-toggle" onclick="toggleSidebar()">
+          <i class="ti ti-menu-2"></i>
+        </button>
+        {% block hide_back_button %}{% endblock %}
+{% if not self.hide_back_button %}
+{% block show_back %}<button class="back-btn" onclick="goBack()" title="Back" id="backBtn">
+  <i class="ti ti-arrow-left"></i>
+</button>{% endblock %}
+{% endif %}
+
+        <div class="page-title-wrap">
+          <span class="page-title">{% block page_title %}Dashboard{% endblock %}</span>
+          <span class="page-subtitle">{% block page_subtitle %}{% endblock %}</span>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="icon-btn has-dot"><i class="ti ti-bell"></i></button>
+        <div class="dropdown">
+          <button class="user-btn dropdown-toggle" data-bs-toggle="dropdown">
+            <div class="avatar-sm">{{ user.first_name|first|upper }}{{ user.last_name|first|upper }}</div>
+            <span>{{ user.username }}</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item" href="#"><i class="ti ti-user me-2"></i>Profile</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li>
+              <form method="post" action="{% url 'accounts:logout' %}">
+                {% csrf_token %}
+                <button class="dropdown-item text-danger" type="submit">
+                  <i class="ti ti-logout me-2"></i>Logout
+                </button>
+              </form>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </header>
+
+    <!-- Page Content -->
+    <main class="page-content">
+      {% if messages %}
+        {% for message in messages %}
+          <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+
+      {% block content %}{% endblock %}
+    </main>
+
+  </div>
+  <script>
+    // Restore persisted sidebar-collapsed state immediately, before the rest
+    // of the page's scripts run -- otherwise every fresh page load (this is
+    // a traditional server-rendered app, so every navigation is a full page
+    // load) would reset back to the default expanded sidebar, undoing
+    // whatever the user last chose with the sidebar-toggle button.
+    (function () {
+      try {
+        if (localStorage.getItem('sidebarCollapsed') === '1') {
+          document.getElementById('sidebar').classList.add('collapsed');
+          document.querySelector('.main-content').classList.add('expanded');
+        }
+      } catch (e) { /* localStorage unavailable (e.g. private browsing) -- fall back to default expanded */ }
+    })();
+  </script>
+</div>
+{% else %}
+  {% block auth_content %}{% endblock %}
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+/* Dynamic card width: list pages (.erp-card containing a .table-hover,
+   not the JS bulk-add entry grids used on Add forms) with few enough
+   columns constrain the WHOLE card -- header controls (search, badges,
+   Add button) AND the table together -- to a sensible max-width and
+   center it on the page. The table itself always stays at 100% of its
+   own card (Bootstrap's normal behavior), so it never looks mismatched
+   against the controls above it. Cards with many columns (Reports,
+   wide grids) are left exactly as they were -- full width. */
+function autoFitCardWidth() {
+  document.querySelectorAll('table.table-hover').forEach(function (table) {
+    if (table.offsetParent === null) return; // skip hidden tables
+    const card = table.closest('.erp-card');
+    if (!card) return;
+    if (card.dataset.compactOverride === 'true') return; // page has explicitly forced compact, leave it alone
+    if (card.dataset.compactOverride === 'false') { card.classList.remove('card-compact'); return; } // page explicitly wants this card to always stay full width
+    const columnCount = table.querySelectorAll('thead th').length;
+    const isCompact = columnCount > 0 && columnCount <= 7;
+    card.classList.toggle('card-compact', isCompact);
+  });
+}
+document.addEventListener('DOMContentLoaded', autoFitCardWidth);
+window.addEventListener('resize', autoFitCardWidth);
+
+/* Dynamic column sizing: for every plain data table (list/grid pages),
+   measure the longest text in each column -- header included -- and
+   size that column to (max character count + 2) using CSS's native 'ch'
+   unit, which is defined as the width of the '0' character in the
+   current font. That makes it a direct, accurate match for a character-
+   count-based sizing rule, not an approximate pixel guess.
+   Skipped automatically where character-counting wouldn't make sense:
+   - tables with merged header cells (colspan/rowspan), e.g. Quotation
+     Comparison's two-row vendor-ranking header -- there's no single
+     column to attribute a character count to.
+   - the "Actions" column (icons/buttons, not measurable text).
+   - any column where a cell holds a form control (input/select/button) --
+     those need room for their own UI chrome, not just their text.
+   - a page can opt a specific table out entirely via
+     data-dynamic-columns="false" if it has its own reason to keep fixed
+     widths (e.g. an already-tuned staging/edit grid). */
+function autoSizeColumns() {
+  document.querySelectorAll('table.table').forEach(function (table) {
+    if (table.offsetParent === null) return;
+    if (table.dataset.dynamicColumns === 'false') return;
+    if (table.querySelectorAll('thead th[colspan], thead th[rowspan]').length > 0) return;
+
+    const headerRow = table.querySelector('thead tr:last-of-type');
+    if (!headerRow) return;
+    const headerCells = Array.from(headerRow.children);
+    const n = headerCells.length;
+    if (n === 0) return;
+
+    let colgroup = table.querySelector('colgroup');
+    if (!colgroup || colgroup.children.length !== n) {
+      colgroup = document.createElement('colgroup');
+      for (let i = 0; i < n; i++) colgroup.appendChild(document.createElement('col'));
+      table.insertBefore(colgroup, table.firstChild);
+    }
+    table.style.tableLayout = 'fixed';
+    const cols = colgroup.querySelectorAll('col');
+    const bodyRows = table.querySelectorAll('tbody tr');
+
+    // Measure real pixel widths rather than approximating from character
+    // counts -- a plain per-character estimate assumes uniform font
+    // weight, but a header (bold + uppercase) and a styled body cell
+    // (e.g. a bold Doc ID) both need genuinely more pixels per character
+    // than plain body text does. A hidden probe that copies each cell's
+    // OWN actual computed style (not a shared, averaged one) measures
+    // exactly what that specific text needs, however it's styled.
+    function measureTextPx(el, text) {
+      const cs = getComputedStyle(el);
+      const probe = document.createElement('span');
+      probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;';
+      probe.style.font = cs.font;
+      probe.style.textTransform = cs.textTransform;
+      probe.style.letterSpacing = cs.letterSpacing;
+      probe.textContent = text;
+      document.body.appendChild(probe);
+      const px = probe.getBoundingClientRect().width;
+      probe.remove();
+      return px;
+    }
+
+    // A base ch-to-px ratio (plain table font, no bold/uppercase) is
+    // still needed to express each column's final width in 'ch' units
+    // rather than raw pixels, matching the "character count + padding"
+    // sizing rule -- and to convert a measured pixel need back into
+    // that unit consistently.
+    const basePxProbe = document.createElement('span');
+    basePxProbe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;';
+    basePxProbe.style.font = getComputedStyle(table).font;
+    basePxProbe.textContent = '0'.repeat(100);
+    table.appendChild(basePxProbe);
+    const chPx = basePxProbe.getBoundingClientRect().width / 100;
+    basePxProbe.remove();
+
+    // The actual CSS padding+border on a cell eats into its available
+    // text space -- a generic "+2 characters" buffer assumed this padding
+    // would be roughly 2 characters wide, but this app's table cells use
+    // 14px left+right padding plus a 1px divider border (29px total),
+    // which is measurably more than that assumption covered, and was the
+    // actual cause of text wrapping even though the computed column width
+    // looked comfortably larger than the text itself. Measuring it
+    // directly removes the guesswork; checked against both a header and
+    // a body cell in case their padding ever differs.
+    let cellPaddingPx = 0;
+    const sampleBodyCell = bodyRows[0] ? bodyRows[0].children[0] : null;
+    [headerCells[0], sampleBodyCell].forEach(function (el) {
+      if (!el) return;
+      const cs = getComputedStyle(el);
+      const total = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) +
+                    parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth);
+      if (total > cellPaddingPx) cellPaddingPx = total;
+    });
+
+    headerCells.forEach(function (th, i) {
+      const col = cols[i];
+      if (!col) return;
+      const headerText = th.textContent.trim();
+      const isActionsColumn = /^actions?$/i.test(headerText);
+
+      if (isActionsColumn) {
+        // Body cells here hold icon buttons, not measurable text, so
+        // there's nothing to size against there -- but the header LABEL
+        // itself still needs to fit. Widen only if the column's current
+        // width (deliberately set per-table to fit its icon buttons)
+        // is actually too narrow for "Actions" itself; never shrink it.
+        const headerPx = measureTextPx(th, headerText);
+        const currentPx = parseFloat(col.style.width) || 0;
+        const currentIsCh = (col.style.width || '').endsWith('ch');
+        const currentPxEquivalent = currentIsCh ? currentPx * chPx : currentPx;
+        const neededPx = headerPx + cellPaddingPx + 4;
+        if (neededPx > currentPxEquivalent) {
+          col.style.width = Math.ceil(neededPx) + 'px';
+        }
+        return;
+      }
+
+      let maxPx = measureTextPx(th, headerText);
+      let hasFormControl = false;
+
+      bodyRows.forEach(function (row) {
+        const cell = row.children[i];
+        if (!cell) return;
+        if (cell.querySelector('input, select, button, textarea')) { hasFormControl = true; return; }
+        const text = cell.textContent.trim();
+        if (!text) return;
+        // Measure using the cell's own style where the text sits most
+        // specifically (e.g. a <strong> inside the <td>), so a bold Doc
+        // ID measures as bold, not as the plain <td> it's wrapped in.
+        // Checked separately from (rather than combined with) <a>/<span>:
+        // querySelector('strong, b, span, a') returns whichever matches
+        // FIRST in DOCUMENT order, which for a link-wrapped bold value
+        // like <a><strong>GP-2026-0004</strong></a> is the non-bold <a>,
+        // not the actually-bold <strong> nested inside it -- silently
+        // under-measuring the real (bold) width needed. strong/b are
+        // checked first specifically because they always mean bold
+        // regardless of where they're nested, which a wrapping <a> or
+        // <span> doesn't guarantee about whatever's inside them.
+        const styledChild = cell.querySelector('strong, b') || cell.querySelector('a, span');
+        const px = measureTextPx(styledChild || cell, text);
+        if (px > maxPx) maxPx = px;
+      });
+
+      if (hasFormControl) return;
+
+      const chars = Math.min(Math.max((maxPx + cellPaddingPx + 4) / chPx, 6), 40);
+      col.style.width = chars + 'ch';
+    });
+
+    // table-layout:fixed with Bootstrap's default width:100% distributes
+    // any leftover space proportionally across ALL columns rather than
+    // reliably shrinking the table to match its content -- confirmed
+    // this happens on some pages but not others, and neither width:auto
+    // nor width:fit-content override it consistently. The one reliable
+    // fix: sum up every column's real pixel width (reusing the same
+    // chPx ratio computed above) and set the table's own width
+    // explicitly. The card's own width is then handled separately, just
+    // below.
+    let sumPx = 0;
+    cols.forEach(function (c) {
+      const w = c.style.width;
+      if (w.endsWith('ch')) sumPx += parseFloat(w) * chPx;
+      else if (w.endsWith('px')) sumPx += parseFloat(w);
+    });
+    if (sumPx > 0) table.style.width = Math.ceil(sumPx) + 'px';
+
+    // Constraining the TABLE alone isn't enough: the surrounding .erp-card
+    // stays at whatever width autoFitCardWidth() left it at (full width,
+    // for any table over 7 columns), so its header toolbar row -- title,
+    // search box, filters, action button -- keeps stretching to the
+    // card's far edge via justify-content:space-between, even once the
+    // table itself has shrunk to a tight, natural width below it. The
+    // gap between where the table actually ends and where the card (and
+    // its toolbar) end grows with however much shorter the real content
+    // is than a full-width card -- barely noticeable on a page with wide
+    // values, glaring on one with short ones. So the card needs to
+    // follow the same content-driven sizing as the table inside it: once
+    // sumPx is known, compact (and center) the card whenever that's
+    // comfortably narrower than a full-width card would be. A page can
+    // still opt out via data-compact-override, exactly as
+    // autoFitCardWidth() already respects -- e.g. Quotation/Sales detail
+    // pages that were deliberately set to always stay full width.
+    const card = table.closest('.erp-card');
+    if (card && card.dataset.compactOverride !== 'false' && card.dataset.compactOverride !== 'true') {
+      const shouldCompact = sumPx > 0 && sumPx < 1100;
+      card.classList.toggle('card-compact', shouldCompact);
+      if (shouldCompact) {
+        // The header toolbar (title, search box, filter dropdowns, action
+        // button) can genuinely need more horizontal room than a narrow
+        // table does -- e.g. Sales' search input + Division filter +
+        // Month filter + button, on a page whose actual data rows are
+        // short. Sizing the card to the table alone would squeeze that
+        // row below its own minimum, causing real overlap/truncated text,
+        // not just wasted space. So measure the header's own natural,
+        // unconstrained width too (temporarily freeing the card to
+        // max-content so nothing is forced to shrink first), and use
+        // whichever of the two -- table content or header content -- is
+        // actually larger.
+        const header = card.querySelector('.erp-card-header');
+        let headerNaturalPx = 0;
+        if (header) {
+          const prevWidth = card.style.width;
+          card.style.width = 'max-content';
+          headerNaturalPx = header.getBoundingClientRect().width;
+          card.style.width = prevWidth;
+        }
+        card.style.width = Math.ceil(Math.max(sumPx + 48, headerNaturalPx + 16)) + 'px';
+      } else {
+        card.style.width = '';
+      }
+    }
+  });
+}
+document.addEventListener('DOMContentLoaded', autoSizeColumns);
+window.addEventListener('resize', autoSizeColumns);
+
+function toggleSidebar() {
+  var sidebar = document.getElementById('sidebar');
+  var main = document.querySelector('.main-content');
+  sidebar.classList.toggle('collapsed');
+  main.classList.toggle('expanded');
+  try {
+    localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed') ? '1' : '0');
+  } catch (e) { /* localStorage unavailable -- toggle still works for this page, just won't persist */ }
+  // The sidebar's width transition (0.25s) changes how much horizontal
+  // room is actually available, but that's an internal layout change --
+  // it never fires a window 'resize' event, so autoFitCardWidth() would
+  // otherwise never re-run and any card that got dynamically compacted
+  // at page load would stay stuck at its old width forever, even once
+  // the sidebar collapses and more space opens up. Re-running it here,
+  // after the transition finishes, keeps every card's width correctly
+  // in sync with the sidebar's actual current state.
+  setTimeout(function () { autoFitCardWidth(); autoSizeColumns(); }, 260);
+}
+
+function goBack() {
+  var fallback = document.body.getAttribute('data-back-fallback') || '/wastage/';
+  if (document.referrer && document.referrer.indexOf(window.location.host) !== -1) {
+    window.history.back();
+  } else {
+    window.location.href = fallback;
+  }
+}
+
+/* ===== Global quick-search + instant filter pills ===== */
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('.quick-search-input[data-qs-target]').forEach(function (input) {
+    var targetId = input.getAttribute('data-qs-target');
+    var table = document.getElementById(targetId);
+    if (!table || !table.tBodies[0]) return;
+    var pillWrap = document.querySelector('.filter-pills[data-qs-for="' + targetId + '"]');
+
+    function apply() {
+      var q = input.value.trim().toLowerCase();
+      var activePill = pillWrap ? pillWrap.querySelector('.filter-pill.active') : null;
+      var filter = activePill ? activePill.getAttribute('data-qs-filter') : 'all';
+      Array.prototype.forEach.call(table.tBodies[0].rows, function (row) {
+        if (row.classList.contains('qs-norow')) return;
+        var tags = (row.getAttribute('data-qs-tags') || '').toLowerCase().split(/\s+/);
+        var matchesPill = (filter === 'all') || tags.indexOf(filter) !== -1;
+        var matchesText = !q || row.textContent.toLowerCase().indexOf(q) !== -1;
+        row.classList.toggle('qs-hidden', !(matchesPill && matchesText));
+      });
+    }
+    input.addEventListener('input', apply);
+    if (pillWrap) pillWrap.querySelectorAll('.filter-pill').forEach(function (pill) {
+      pill.addEventListener('click', function () {
+        pillWrap.querySelectorAll('.filter-pill').forEach(function (p) { p.classList.remove('active'); });
+        pill.classList.add('active');
+        apply();
+      });
+    });
+  });
+});
+
+/* ===== Global per-column header click-to-filter ===== */
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('.erp-card table.table').forEach(function (table) {
+    var headerRow = table.querySelector('thead tr');
+    var tbody = table.tBodies[0];
+    if (!headerRow || !tbody) return;
+    var ths = Array.prototype.slice.call(headerRow.children);
+
+    // One shared popover per table, repositioned on each header click
+    var popover = document.createElement('div');
+    popover.className = 'col-filter-popover';
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Filter…';
+    popover.appendChild(input);
+    document.body.appendChild(popover);
+
+    var activeFilters = {};   // colIndex -> lowercase filter text
+    var currentColIndex = null;
+
+    function applyColumnFilters() {
+      Array.prototype.forEach.call(tbody.rows, function (row) {
+        if (row.classList.contains('qs-norow')) return;
+        var visible = true;
+        for (var idx in activeFilters) {
+          var val = activeFilters[idx];
+          if (!val) continue;
+          var cell = row.cells[idx];
+          var text = cell ? cell.textContent.toLowerCase() : '';
+          if (text.indexOf(val) === -1) { visible = false; break; }
+        }
+        row.classList.toggle('col-hidden', !visible);
+      });
+    }
+
+    ths.forEach(function (th, idx) {
+      var label = th.textContent.trim();
+      // Skip non-data columns: Actions column and empty/icon-only headers
+      if (!label || label.toLowerCase() === 'actions') return;
+      th.classList.add('th-filterable');
+      var dot = document.createElement('span');
+      dot.className = 'th-filter-dot';
+      th.appendChild(dot);
+
+      th.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var wasOpenOnThisCol = (currentColIndex === idx) && popover.classList.contains('open');
+        popover.classList.remove('open');
+        if (wasOpenOnThisCol) { currentColIndex = null; return; }
+        currentColIndex = idx;
+        var rect = th.getBoundingClientRect();
+        popover.style.left = (rect.left + window.scrollX) + 'px';
+        popover.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+        popover.style.minWidth = rect.width + 'px';
+        input.value = activeFilters[idx] || '';
+        popover.classList.add('open');
+        setTimeout(function () { input.focus(); }, 0);
+      });
+    });
+
+    input.addEventListener('click', function (e) { e.stopPropagation(); });
+    input.addEventListener('input', function () {
+      if (currentColIndex === null) return;
+      var val = input.value.trim().toLowerCase();
+      activeFilters[currentColIndex] = val;
+      ths[currentColIndex].classList.toggle('has-filter', !!val);
+      applyColumnFilters();
+    });
+  });
+
+  // Close any open column-filter popover when clicking elsewhere on the page
+  document.addEventListener('click', function () {
+    document.querySelectorAll('.col-filter-popover.open').forEach(function (p) {
+      p.classList.remove('open');
+    });
+  });
+});
+
+/* ===== Global drawer (offcanvas add-form) ===== */
+window.erpOpenDrawer = function (frameId, url) {
+  var f = document.getElementById(frameId);
+  if (f) f.src = url;
+};
+window.erpDrawerOnSaved = function () {
+  // Invoked from inside the embedded iframe after a successful save.
+  window.location.reload();
+};
+
+</script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

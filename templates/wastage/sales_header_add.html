@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:sales_list' %}{% endblock %}
+{% block title %}New Sale Document — Soorty{% endblock %}
+{% block page_title %}New Sale Document{% endblock %}
+{% block content %}
+
+<div class="erp-card" style="max-width:520px;">
+  <div class="erp-card-header"><a href="{% url 'wastage:sales_list' %}" style="font-size:12px;color:#6B7280;">&larr; Back to Sales</a></div>
+
+  <form method="post">
+    {% csrf_token %}
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Division</label>
+        {% if sees_all_divisions %}
+        <select name="division" class="form-select">
+          {% for code, label in division_choices %}<option value="{{ code }}" {% if division == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+        {% else %}
+        <div><span class="badge" style="background:#ECFDF5;color:#047857;font-weight:600;padding:6px 10px;"><i class="ti ti-lock" style="font-size:11px;margin-right:4px;"></i>Division {{ division }}</span></div>
+        {% endif %}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Document Date *</label>
+        <input type="date" name="doc_date" class="form-control" value="{{ today }}" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Vendor *</label>
+        <select name="vendor_id" class="form-select" required>
+          <option value="" disabled selected>-- Select vendor --</option>
+          {% for v in vendors %}<option value="{{ v.VENDOR_ID }}">{{ v.VENDOR_NAME }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Invoice No</label>
+        <input type="text" name="invoice_no" class="form-control" placeholder="Optional">
+      </div>
+    </div>
+
+    <p style="font-size:12px;color:#6B7280;margin-top:16px;">
+      <i class="ti ti-info-circle" style="margin-right:4px;"></i>
+      This creates a <strong>Draft</strong> document — the Sale Order Lines section will appear right here so you can add items, then Ship and Post when ready.
+    </p>
+
+    <div class="d-flex gap-2 mt-3">
+      <button type="submit" class="btn btn-sm" style="background:#10B981;color:#FFFFFF;padding:8px 24px;font-size:13px;"><i class="ti ti-plus me-1"></i> Add Detail</button>
+      <a href="{% url 'wastage:sales_list' %}" class="btn btn-sm btn-outline-secondary" style="padding:8px 20px;font-size:13px;">Exit</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

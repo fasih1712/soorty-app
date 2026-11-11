@@ -1,0 +1,152 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:gatepass_list' %}{% endblock %}
+{% block title %}{{ header.GATE_PASS_ID }} — Soorty{% endblock %}
+{% block page_title %}{{ header.GATE_PASS_ID }}{% endblock %}
+{% block content %}
+
+<div class="erp-card">
+  <div class="erp-card-header" style="justify-content:space-between; flex-wrap:nowrap; gap:12px;">
+    <span style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:10px;">
+      {{ header.GATE_PASS_ID }}
+      {% if header.MODULE_TYPE == 'Shipment' %}<span class="badge" style="background:#EFF6FF;color:#1D4ED8;font-size:11px;font-weight:700;text-transform:none;letter-spacing:normal;">Shipment</span>
+      {% else %}<span class="badge" style="background:#F5F3FF;color:#7C3AED;font-size:11px;font-weight:700;text-transform:none;letter-spacing:normal;">Transfer</span>{% endif %}
+      {% if header.STATUS == 'Posted' %}<span class="badge" style="background:#ECFDF5;color:#047857;font-size:11px;font-weight:700;text-transform:none;letter-spacing:normal;">Posted</span>
+      {% elif header.STATUS == 'Draft' %}<span class="badge" style="background:#FFFBEB;color:#B45309;font-size:11px;font-weight:700;text-transform:none;letter-spacing:normal;">Draft</span>
+      {% else %}<span class="badge" style="background:#fde8e8;color:#a32d2d;font-size:11px;font-weight:700;text-transform:none;letter-spacing:normal;">Cancelled</span>{% endif %}
+    </span>
+    <div style="display:flex; gap:8px; align-items:center;">
+      {% if header.STATUS == 'Draft' %}
+      <a href="{% url 'wastage:gatepass_edit' header.GATE_PASS_ID %}" class="btn btn-sm" style="background:#10B981;color:#FFFFFF;font-size:12px;padding:6px 16px;"><i class="ti ti-pencil me-1"></i> Edit Draft</a>
+      {% endif %}
+      {% if header.STATUS == 'Posted' %}
+      <form method="post" action="{% url 'wastage:gatepass_cancel' header.GATE_PASS_ID %}" style="display:inline;"
+            onsubmit="return confirm('Cancel {{ header.GATE_PASS_ID }}? This restores the dispatched stock and rolls back the Sales Order line(s) it shipped against.');">
+        {% csrf_token %}
+        <input type="hidden" name="division" value="{{ header.DIVISION }}">
+        <button type="submit" class="btn btn-sm btn-outline-danger" style="font-size:12px;padding:6px 16px;"><i class="ti ti-rotate me-1"></i> Cancel Gate Pass</button>
+      </form>
+      {% endif %}
+      <a href="{% url 'wastage:gatepass_list' %}" class="btn btn-sm btn-outline-secondary" style="font-size:12px;padding:6px 16px;">Exit</a>
+    </div>
+  </div>
+
+  {% if header.STATUS == 'Draft' %}
+  <p style="font-size:12px;color:#6B7280;margin:-8px 0 16px;">
+    <i class="ti ti-file-pencil" style="margin-right:4px;"></i>
+    This Gate Pass is still a Draft. It has not affected stock, the ledger, or any Sales Order line yet — click Edit Draft to continue, or post it from there.
+  </p>
+  {% endif %}
+  {% if header.STATUS == 'Cancelled' %}
+  <p style="font-size:12px;color:#6B7280;margin:-8px 0 16px;">
+    <i class="ti ti-lock" style="margin-right:4px;"></i>
+    This Gate Pass is cancelled. Its dispatched stock has been restored; it is kept as a permanent historical record.
+    Cancelled by {{ header.CANCELLED_BY|default:"—" }} on {{ header.CANCELLED_DATE|default:"—" }}.
+  </p>
+  {% endif %}
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px;font-weight:500;">Division</label>
+      <div><span class="badge" style="background:#F3F4F6;color:#374151;font-size:12px;padding:6px 10px;">{{ header.DIVISION }}</span></div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px;font-weight:500;">Manual Gate Pass No.</label>
+      {% if header.STATUS == 'Posted' and can_edit_manual_no %}
+      <form method="post" action="{% url 'wastage:gatepass_set_manual_no' header.GATE_PASS_ID %}" style="display:flex;gap:6px;">
+        {% csrf_token %}
+        <input type="text" name="manual_gate_pass_no" class="form-control form-control-sm" value="{{ header.MANUAL_GATE_PASS_NO|default:'' }}" placeholder="Enter number..." style="font-size:13px;">
+        <button type="submit" class="btn btn-sm action-btn action-view" title="Save"><i class="ti ti-device-floppy"></i></button>
+      </form>
+      {% else %}
+      <div style="font-size:13px;">{{ header.MANUAL_GATE_PASS_NO|default:"—" }}</div>
+      {% endif %}
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px;font-weight:500;">Gate Pass Date</label>
+      <div style="font-size:13px;">{{ header.GATE_PASS_DATE }}</div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px;font-weight:500;">Document Type</label>
+      <div style="font-size:13px;">{{ header.DOCUMENT_TYPE|default:"—" }}</div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px;font-weight:500;">Sender Name</label>
+      <div style="font-size:13px;">{{ header.SENDER_NAME|default:"—" }}</div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px;font-weight:500;">Ship To</label>
+      <div style="font-size:13px;">{{ header.SHIP_TO|default:"—" }}</div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px;font-weight:500;">Sender Department</label>
+      <div style="font-size:13px;">{{ header.DEPT_NAME|default:"—" }}</div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px;font-weight:500;">Vehicle Type</label>
+      <div style="font-size:13px;">{{ header.VEHICLE_TYPE|default:"—" }}</div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px;font-weight:500;">Vehicle / Container #</label>
+      <div style="font-size:13px;">{{ header.VEHICLE_NO|default:"—" }}</div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px;font-weight:500;">Driver Name</label>
+      <div style="font-size:13px;">{{ header.DRIVER_NAME|default:"—" }}</div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px;font-weight:500;">Receiver Name</label>
+      <div style="font-size:13px;">{{ header.RECEIVER_NAME|default:"—" }}</div>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label" style="font-size:12px;font-weight:500;">Remarks</label>
+      <div style="font-size:13px;">{{ header.REMARKS|default:"—" }}</div>
+    </div>
+  </div>
+
+  <hr style="margin:8px 0 16px;">
+
+  <table class="table table-sm table-hover table-col-divided" style="font-size:13px;">
+    <colgroup>
+      <col style="width:60px;">
+      <col style="width:130px;">
+      <col style="width:90px;">
+      <col style="width:110px;">
+      <col>
+      <col style="width:70px;">
+      <col style="width:110px;">
+      <col style="width:110px;">
+      <col style="width:160px;">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>S.No</th>
+        <th>Doc No / Ref#</th>
+        <th>SO Line #</th>
+        <th>Item Code</th>
+        <th>Item Description</th>
+        <th>UOM</th>
+        <th style="text-align:right;">SO Order Qty</th>
+        <th style="text-align:right;">Gate Pass Qty</th>
+        <th>Remarks</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in lines %}
+      <tr>
+        <td style="color:#6B7280;">{{ l.LINE_NO }}</td>
+        <td>{% if l.SO_DOC_ID %}<a href="{% url 'wastage:sales_header_edit' l.SO_DOC_ID %}">{{ l.SO_DOC_ID }}</a>{% else %}<span style="color:#6B7280;">—</span>{% endif %}</td>
+        <td style="color:#6B7280;">{{ l.SO_LINE_NO|default:"—" }}</td>
+        <td style="color:#6B7280;">{{ l.ITEM_CODE|default:"—" }}</td>
+        <td><strong>{{ l.ITEM_DESCRIPTION|default:"—" }}</strong></td>
+        <td style="color:#6B7280;">{{ l.UOM|default:"—" }}</td>
+        <td style="text-align:right;">{% if l.SO_ORDER_QTY %}{{ l.SO_ORDER_QTY|floatformat:2 }}{% else %}<span style="color:#6B7280;">—</span>{% endif %}</td>
+        <td style="text-align:right;font-weight:700;">{{ l.GATEPASS_QTY|floatformat:2 }}</td>
+        <td style="color:#6B7280;">{{ l.REMARKS|default:"—" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="9" style="text-align:center;color:#6B7280;padding:20px;">No line items.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:home' %}{% endblock %}
+{% block title %}Generic Groups — Soorty{% endblock %}
+{% block page_title %}User Generic Groups{% endblock %}
+
+{% block content %}
+
+<div class="erp-card">
+  <div class="erp-card-header" style="justify-content:space-between;">
+    <span style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;">Generic Group Records</span>
+    <a href="{% url 'wastage:generic_group_add' %}" class="btn btn-sm" style="background:#10B981;color:#FFFFFF;font-size:12px;padding:5px 14px;">
+      <i class="ti ti-plus me-1"></i> Add Generic Group
+    </a>
+  </div>
+  <table class="table table-sm table-hover" style="font-size:13px;">
+    <thead style="color:#6B7280;background:#f9f9f9;">
+      <tr><th>Code</th><th>Group Type</th><th>Description</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for r in records %}
+      <tr>
+        <td><strong>{{ r.CODE }}</strong></td>
+        <td><span class="badge" style="background:#e6f1fb;color:#185fa5;">{{ r.GROUP_CODE|default:"—" }}</span> {{ r.SHORT_DESC|default:"" }}</td>
+        <td>{{ r.DESCRIPTION|default:"—" }}</td>
+        <td>
+          <a href="{% url 'wastage:generic_group_edit' r.CODE %}" class="btn btn-sm" style="background:#e6f1fb;color:#185fa5;font-size:11px;padding:3px 10px;"><i class="ti ti-edit"></i> Edit</a>
+          <form method="post" action="{% url 'wastage:generic_group_delete' r.CODE %}" style="display:inline;" onsubmit="return confirm('Delete {{ r.CODE }}?')">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm" style="background:#fde8e8;color:#a32d2d;font-size:11px;padding:3px 10px;"><i class="ti ti-trash"></i> Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" style="text-align:center;color:#6B7280;">No generic groups found. Add one above.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

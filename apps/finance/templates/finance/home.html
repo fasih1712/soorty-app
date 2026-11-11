@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}Finance | Soorty{% endblock %}
+{% block page_title %}Finance{% endblock %}
+{% block page_subtitle %}Super Admin only{% endblock %}
+{% block content %}
+{% include 'finance/_theme.html' %}
+<div class="fin-theme">
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3"><div class="stat-card"><div class="label">Active accounts</div><div class="value text-money">{{ counts.ACCOUNTS }}</div><div class="sub">{{ counts.POSTING_HEADS }} posting heads</div></div></div>
+    <div class="col-6 col-lg-3"><div class="stat-card"><div class="label">Active posting rules</div><div class="value text-money">{{ counts.RULES }}</div><div class="sub">Debit / credit mappings</div></div></div>
+    <div class="col-6 col-lg-3"><div class="stat-card"><div class="label">Locked months</div><div class="value text-money">{{ counts.LOCKED_PERIODS }}</div><div class="sub">Closed for posting</div></div></div>
+    <div class="col-6 col-lg-3"><div class="stat-card"><div class="label">Blocked attempts, 7 days</div><div class="value text-money">{{ counts.DENIED_7D }}</div><div class="sub">Logged in Finance Audit</div></div></div>
+  </div>
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3"><div class="stat-card"><div class="label">Customer advance on account</div><div class="value text-money">{{ counts.ADVANCE_TOTAL|floatformat:"2g" }}</div><div class="sub">{{ counts.ADVANCE_CUSTOMERS }} customer(s)</div></div></div>
+    <div class="col-6 col-lg-3"><a href="{% url 'finance:events' %}" class="text-decoration-none"><div class="stat-card"><div class="label">Failed postings</div><div class="value text-money" {% if counts.FAILED_EVENTS %}style="color:var(--danger)"{% endif %}>{{ counts.FAILED_EVENTS }}</div><div class="sub">Waiting for retry</div></div></a></div>
+  </div>
+
+  <div class="fin-card mb-3">
+    <div class="fin-card-head">Set up</div>
+    <div class="fin-card-body">
+      <div class="row g-3">
+        <div class="col-6 col-md-4 col-lg"><a class="report-card" href="{% url 'finance:coa_list' %}"><i class="ti ti-list-tree"></i><div class="rname">Chart of Accounts</div><div class="rdesc">Heads, groups and system accounts</div></a></div>
+        <div class="col-6 col-md-4 col-lg"><a class="report-card" href="{% url 'finance:posting_rules' %}"><i class="ti ti-arrows-exchange"></i><div class="rname">Posting Rules</div><div class="rdesc">What each event debits and credits</div></a></div>
+        <div class="col-6 col-md-4 col-lg"><a class="report-card" href="{% url 'finance:settings' %}"><i class="ti ti-adjustments"></i><div class="rname">Settings</div><div class="rdesc">Tolerance, allocation, ageing</div></a></div>
+        <div class="col-6 col-md-4 col-lg"><a class="report-card" href="{% url 'finance:periods' %}"><i class="ti ti-calendar-lock"></i><div class="rname">Periods</div><div class="rdesc">Lock and reopen months</div></a></div>
+        <div class="col-6 col-md-4 col-lg"><a class="report-card" href="{% url 'finance:customers' %}"><i class="ti ti-wallet"></i><div class="rname">Customer Advances</div><div class="rdesc">Prepaid balances and ledgers</div></a></div>
+        <div class="col-6 col-md-4 col-lg"><a class="report-card" href="{% url 'finance:adjustments' %}"><i class="ti ti-adjustments-horizontal"></i><div class="rname">Adjustments</div><div class="rdesc">Refunds, notes, transfers, journals</div></a></div>
+        <div class="col-6 col-md-4 col-lg"><a class="report-card" href="{% url 'finance:reports' %}"><i class="ti ti-report-analytics"></i><div class="rname">Reports</div><div class="rdesc">Statements, trial balance, reconciliation</div></a></div>
+        <div class="col-6 col-md-4 col-lg"><a class="report-card" href="{% url 'finance:vouchers' %}"><i class="ti ti-receipt"></i><div class="rname">Vouchers</div><div class="rdesc">Every posted entry</div></a></div>
+        <div class="col-6 col-md-4 col-lg"><a class="report-card" href="{% url 'finance:events' %}"><i class="ti ti-refresh-alert"></i><div class="rname">Posting Events</div><div class="rdesc">Gate Pass postings and retries</div></a></div>
+        <div class="col-6 col-md-4 col-lg"><a class="report-card" href="{% url 'finance:audit' %}"><i class="ti ti-shield-check"></i><div class="rname">Finance Audit</div><div class="rdesc">Append-only activity trail</div></a></div>
+      </div>
+    </div>
+  </div>
+  <p class="section-note mb-0">Reports arrive in the next phase. Payment-status badges stay hidden from operational screens. Everything here is visible to the Super Admin only.</p>
+</div>
+{% endblock %}

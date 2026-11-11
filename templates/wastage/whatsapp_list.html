@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:home' %}{% endblock %}
+{% block title %}WhatsApp Log — Soorty{% endblock %}
+{% block page_title %}WhatsApp Log{% endblock %}
+{% block content %}
+<div class="erp-card">
+  <div class="erp-card-header" style="justify-content:flex-start; gap:8px;">
+    <span style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;">Message Log</span>
+    <span class="badge" style="background:#ECFDF5;color:#047857;border:1px solid rgba(4,120,87,.15);font-size:11px;font-weight:700;text-transform:none;letter-spacing:normal;">{{ records|length }} Entries</span>
+  </div>
+  <table class="table table-sm table-hover table-col-divided" style="font-size:13px;">
+    <colgroup>
+      <col style="width:60px;">
+      <col style="width:160px;">
+      <col style="width:150px;">
+      <col style="width:90px;">
+      <col>
+    </colgroup>
+    <thead style="color:#6B7280;background:#f9f9f9;">
+      <tr><th>ID</th><th>Vendor</th><th>Sent At</th><th>Status</th><th>Message</th></tr>
+    </thead>
+    <tbody>
+      {% for r in records %}
+      <tr>
+        <td>{{ r.LOG_ID }}</td>
+        <td><strong>{{ r.VENDOR_NAME|default:"—" }}</strong></td>
+        <td>{{ r.SENT_AT|default:"—" }}</td>
+        <td>{% if r.STATUS == 'SENT' %}<span class="badge" style="background:#ECFDF5;color:#047857;">Sent</span>{% else %}<span class="badge" style="background:#fde8e8;color:#a32d2d;">Failed</span>{% endif %}</td>
+        <td>{{ r.MESSAGE_TEXT|default:"—"|truncatechars:50 }}</td>
+      </tr>
+      {% empty %}<tr><td colspan="5" style="text-align:center;color:#6B7280;">No logs found.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

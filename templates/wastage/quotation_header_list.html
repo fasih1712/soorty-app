@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:home' %}{% endblock %}
+{% block title %}Quotations — Soorty{% endblock %}
+{% block page_title %}Quotations{% endblock %}
+{% block content %}
+
+<div class="erp-card">
+  <div class="erp-card-header" style="justify-content:space-between; flex-wrap:nowrap; gap:12px;">
+    <span style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;flex-shrink:0;display:flex;align-items:center;gap:8px;">
+      Quotation Records
+      <span class="badge" style="background:#ECFDF5;color:#047857;border:1px solid rgba(4,120,87,.15);font-size:11px;font-weight:700;text-transform:none;letter-spacing:normal;">{{ records|length }} Entries</span>
+    </span>
+    <div style="display:flex; align-items:center; gap:12px; flex-shrink:0; white-space:nowrap;">
+      <form method="get" style="display:flex; align-items:center; gap:12px;">
+        {% if sees_all_divisions %}
+        <select name="division" class="form-select form-select-sm" style="min-width:150px;background-color:#F3F4F6;border-color:#E5E7EB;" onchange="this.form.submit()">
+          <option value="ALL" {% if division_filter == 'ALL' %}selected{% endif %}>All Divisions</option>
+          {% for code, label in division_choices %}<option value="{{ code }}" {% if division_filter == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+        {% endif %}
+        <select name="month" class="form-select form-select-sm" style="max-width:130px;background-color:#F3F4F6;border-color:#E5E7EB;" onchange="this.form.submit()">
+          {% for value, label in month_options %}<option value="{{ value }}" {% if month_param == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </form>
+      {% if sees_all_divisions %}
+      <span style="font-size:12px;color:#6B7280;"><i class="ti ti-world" style="font-size:11px;"></i> All-division access</span>
+      {% else %}
+      <span style="font-size:12px;color:#6B7280;"><i class="ti ti-lock" style="font-size:11px;"></i> Division {{ division }}</span>
+      {% endif %}
+      <a href="{% url 'wastage:quotation_pdf' %}?{{ request.GET.urlencode }}" class="btn btn-sm btn-outline-secondary" style="font-size:12px;padding:5px 14px;white-space:nowrap;"><i class="ti ti-file-type-pdf me-1"></i> Export PDF</a>
+      <a href="{% url 'wastage:quotation_add' %}" class="btn btn-sm" style="background:#10B981;color:#FFFFFF;font-size:12px;padding:5px 14px;white-space:nowrap;"><i class="ti ti-plus me-1"></i> New Quotation</a>
+    </div>
+  </div>
+
+  <table class="table table-sm table-hover table-col-divided" style="font-size:13px;">
+    <colgroup>
+      <col style="width:90px;">
+      <col style="width:130px;">
+      <col style="width:90px;">
+      {% if sees_all_divisions %}<col style="width:90px;">{% endif %}
+      <col style="width:180px;">
+      <col style="width:110px;">
+      <col style="width:130px;">
+      <col style="width:120px;">
+      <col style="width:120px;">
+      <col style="width:60px;">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>Actions</th>
+        <th>Doc ID</th>
+        <th style="text-align:center;">Status</th>
+        {% if sees_all_divisions %}<th>Division</th>{% endif %}
+        <th>Party</th>
+        <th>Month</th>
+        <th>Reference No</th>
+        <th>Receive Date</th>
+        <th>Valid Until</th>
+        <th style="text-align:center;">Lines</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in records %}
+      <tr>
+        <td>
+          <a href="{% url 'wastage:quotation_header_edit' r.QUOTE_DOC_ID %}" class="btn btn-sm action-btn action-view" title="Open"><i class="ti ti-eye"></i></a>
+          <a href="{% url 'wastage:quotation_detail_pdf' r.QUOTE_DOC_ID %}" class="btn btn-sm action-btn action-view" title="Download PDF"><i class="ti ti-file-type-pdf"></i></a>
+          {% if r.STATUS != 'Locked' %}
+          <form method="post" action="{% url 'wastage:quotation_header_delete' r.QUOTE_DOC_ID %}" style="display:inline;" onsubmit="return confirm('Delete {{ r.QUOTE_DOC_ID }}?')">{% csrf_token %}<button type="submit" class="btn btn-sm action-btn action-delete" title="Delete"><i class="ti ti-trash"></i></button></form>
+          {% endif %}
+        </td>
+        <td><strong style="color:#10B981;">{{ r.QUOTE_DOC_ID }}</strong></td>
+        <td style="text-align:center;">
+          {% if r.STATUS == 'Locked' %}
+          <span class="badge" style="background:#fde8e8;color:#a32d2d;font-size:11px;font-weight:700;"><i class="ti ti-lock" style="font-size:10px;margin-right:2px;"></i>Locked</span>
+          {% else %}
+          <span class="badge" style="background:#ECFDF5;color:#047857;font-size:11px;font-weight:700;">Open</span>
+          {% endif %}
+        </td>
+        {% if sees_all_divisions %}<td><span class="badge" style="background:#F3F4F6;color:#374151;font-size:11px;">{{ r.DIVISION }}</span></td>{% endif %}
+        <td>{{ r.VENDOR_NAME|default:"—" }}{% if r.CNIC_ATTACHMENT_PATH %} <a href="{% url 'wastage:vendor_cnic_view' r.VENDOR_ID %}" target="_blank" title="View CNIC" style="color:#10B981;"><i class="ti ti-id"></i></a>{% endif %}</td>
+        <td>{{ r.TARGET_MONTH_DISPLAY|default:"—" }}</td>
+        <td>{{ r.REFERENCE_NO|default:"—" }}</td>
+        <td>{{ r.RECEIVE_DATE|default:"—" }}</td>
+        <td>{{ r.VALID_UNTIL|default:"—" }}</td>
+        <td style="text-align:center;color:#6B7280;">{{ r.LINE_COUNT }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="{% if sees_all_divisions %}10{% else %}9{% endif %}" style="text-align:center;color:#6B7280;padding:28px;">No quotations found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

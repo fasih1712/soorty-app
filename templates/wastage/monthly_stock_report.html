@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:home' %}{% endblock %}
+{% block title %}Monthly Stock Report — Soorty{% endblock %}
+{% block page_title %}Monthly Stock Report{% endblock %}
+{% block content %}
+
+<div class="erp-card">
+  <div class="erp-card-header" style="justify-content:space-between; flex-wrap:nowrap; gap:12px;">
+    <span style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;">Select Month</span>
+    {% if report_generated %}
+    <a href="{% url 'wastage:monthly_stock_report_pdf' %}?target_month={{ target_month }}&division={{ division_filter }}&doc_no={{ doc_no }}&created_date={{ created_date }}"
+       class="btn btn-sm btn-outline-secondary" style="font-size:12px;padding:5px 14px;"><i class="ti ti-file-type-pdf me-1"></i> Export PDF</a>
+    {% endif %}
+  </div>
+
+  <form method="get" style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+    {% if sees_all_divisions %}
+    <div>
+      <label class="form-label" style="font-size:12px;font-weight:500;">Division</label>
+      <select name="division" class="form-select form-select-sm" style="min-width:180px;">
+        <option value="ALL" {% if division_filter == 'ALL' %}selected{% endif %}>All Divisions</option>
+        {% for code, label in division_choices %}<option value="{{ code }}" {% if division_filter == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    <div>
+      <label class="form-label" style="font-size:12px;font-weight:500;">Month</label>
+      <input type="month" name="target_month" class="form-control form-control-sm" value="{{ target_month|slice:':7' }}" required>
+    </div>
+    <button type="submit" class="btn btn-sm" style="background:#10B981;color:#FFFFFF;font-size:12px;padding:6px 18px;"><i class="ti ti-refresh me-1"></i> View</button>
+  </form>
+</div>
+
+{% if report_generated %}
+<div class="erp-card">
+  <div class="erp-card-header">
+    <span style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;">
+      Monthly Stock Report <span class="badge" style="background:#ECFDF5;color:#047857;font-size:11px;font-weight:700;margin-left:6px;">{{ rows|length }} Items</span>
+    </span>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:24px;font-size:12px;color:#475569;margin-bottom:12px;">
+    <div><strong>Document No:</strong> {{ doc_no }}</div>
+    <div><strong>Month:</strong> {{ month_display }}</div>
+    <div><strong>Created By:</strong> {{ created_by }}</div>
+    <div><strong>Generated:</strong> {{ created_date }}</div>
+  </div>
+
+  <div class="table-responsive" style="border:1px solid #E5E7EB;border-radius:6px;">
+    <table class="table table-sm table-hover mb-0" style="font-size:12px;white-space:nowrap;">
+      <thead style="background:#f9f9f9;color:#334155;">
+        <tr>
+          <th>Description</th>
+          <th>Unit</th>
+          <th style="text-align:right;">Prev Mon Bal</th>
+          {% for d in dept_columns %}<th style="text-align:right;" title="{{ d.DEPT_NAME }}">{{ d.DEPT_SHORT_NAME }}</th>{% endfor %}
+          <th style="text-align:right;">Adjust</th>
+          <th style="text-align:right;">Sale Out</th>
+          <th style="text-align:right;">Closing</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td><strong>{{ r.ITEM_NAME|default:"—" }}</strong></td>
+          <td style="color:#6B7280;">{{ r.UOM|default:"—" }}</td>
+          <td style="text-align:right;">{{ r.OPENING|floatformat:2 }}</td>
+          {% for val in r.RECEIVED_LIST %}<td style="text-align:right;color:#6B7280;">{{ val|floatformat:2 }}</td>{% endfor %}
+          <td style="text-align:right;">{{ r.ADJUST|floatformat:2 }}</td>
+          <td style="text-align:right;">{{ r.SALE_OUT|floatformat:2 }}</td>
+          <td style="text-align:right;font-weight:700;color:#10B981;">{{ r.CLOSING|floatformat:2 }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="{{ dept_columns|length|add:6 }}" style="text-align:center;color:#6B7280;padding:20px;">No stock activity for this month.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="erp-card">
+  <div class="erp-card-header">
+    <span style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;">Section Totals</span>
+  </div>
+  <div class="table-responsive" style="border:1px solid #E5E7EB;border-radius:6px;max-width:420px;">
+    <table class="table table-sm mb-0" style="font-size:13px;">
+      <tbody>
+        <tr><td>Prev Mon Bal (all items)</td><td style="text-align:right;font-weight:700;">{{ totals.OPENING|floatformat:2 }}</td></tr>
+        {% for dt in dept_totals_combined %}
+        <tr><td>{{ dt.DEPT_NAME }}</td><td style="text-align:right;font-weight:700;">{{ dt.TOTAL|floatformat:2 }}</td></tr>
+        {% endfor %}
+        <tr><td>Adjust (net)</td><td style="text-align:right;font-weight:700;">{{ totals.ADJUST|floatformat:2 }}</td></tr>
+        <tr><td>Sale Out</td><td style="text-align:right;font-weight:700;">{{ totals.SALE_OUT|floatformat:2 }}</td></tr>
+        <tr style="background:#ECFDF5;"><td><strong>Closing (all items)</strong></td><td style="text-align:right;font-weight:800;color:#047857;">{{ totals.CLOSING|floatformat:2 }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

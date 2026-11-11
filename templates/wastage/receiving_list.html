@@ -1,0 +1,283 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:home' %}{% endblock %}
+{% block title %}Stock Receiving — Soorty{% endblock %}
+{% block page_title %}Stock Receiving{% endblock %}
+{% block content %}
+<div class="erp-card">
+  <div class="erp-card-header" style="justify-content:space-between; flex-wrap:nowrap; gap:12px;">
+    <span style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;flex-shrink:0;display:flex;align-items:center;gap:8px;">
+      Receiving Records
+      <span class="badge" style="background:#ECFDF5;color:#047857;border:1px solid rgba(4,120,87,.15);font-size:11px;font-weight:700;text-transform:none;letter-spacing:normal;">{{ records|length }} Entries</span>
+    </span>
+    <form method="get" style="display:flex; gap:8px; align-items:center; flex:1; min-width:0;">
+      <input type="text" name="q" value="{{ search }}" class="form-control form-control-sm" placeholder="Search item, department, remarks..." style="font-size:13px; flex:1; min-width:140px;">
+      {% if sees_all_divisions %}
+      <select name="division" class="form-select form-select-sm" style="min-width:140px;">
+        <option value="ALL" {% if division_filter == 'ALL' %}selected{% endif %}>All Divisions</option>
+        {% for code, label in division_choices %}<option value="{{ code }}" {% if division_filter == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      {% endif %}
+      <select name="period" class="form-select form-select-sm" style="min-width:140px;">
+        {% for p in period_options %}<option value="{{ p.value }}" {% if p.selected %}selected{% endif %}>{{ p.label }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn btn-sm" style="background:#10B981;color:#FFFFFF;font-size:12px;padding:4px 14px;flex-shrink:0;"><i class="ti ti-search"></i></button>
+      {% if search %}<a href="?period={{ selected_period }}" class="btn btn-sm btn-outline-secondary" style="font-size:12px;flex-shrink:0;"><i class="ti ti-x"></i> Clear</a>{% endif %}
+    </form>
+    <div style="display:flex; align-items:center; gap:12px; flex-shrink:0; white-space:nowrap;">
+      <span style="font-size:12px;color:#6B7280;">
+        {% if sees_all_divisions %}
+          <i class="ti ti-world" style="font-size:11px;"></i> All-division access
+        {% else %}
+          <i class="ti ti-lock" style="font-size:11px;"></i> Division {{ division }}
+        {% endif %}
+      </span>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="exportPdfBtn" style="font-size:12px;padding:5px 14px;white-space:nowrap;"><i class="ti ti-file-type-pdf me-1"></i> Export PDF</button>
+      <a href="{% url 'wastage:receiving_add' %}" class="btn btn-sm" style="background:#10B981;color:#FFFFFF;font-size:12px;padding:5px 14px;white-space:nowrap;"><i class="ti ti-plus me-1"></i> Add Entry</a>
+    </div>
+  </div>
+  {% if search %}<p style="font-size:12px; color:#6B7280; margin:-8px 0 8px;">Showing results for "<strong>{{ search }}</strong>" — {{ records|length }} found</p>{% endif %}
+  <table class="table table-sm table-hover table-col-divided" style="font-size:13px;">
+    <colgroup>
+      <col style="width:130px;">
+      <col style="width:55px;">
+      {% if sees_all_divisions %}<col style="width:90px;">{% endif %}
+      <col style="width:140px;">
+      <col>
+      <col style="width:100px;">
+      <col style="width:60px;">
+      <col style="width:130px;">
+      <col style="width:160px;">
+    </colgroup>
+    <thead>
+      <tr><th>Actions</th><th>ID</th>{% if sees_all_divisions %}<th>Division</th>{% endif %}<th>Department</th><th>Item</th><th style="text-align:right;">Quantity</th><th>UOM</th><th>Transaction Date</th><th>Remarks</th></tr>
+    </thead>
+    <tbody>
+      {% for r in records %}
+      <tr>
+        <td class="action-cell">
+          <button type="button" class="btn btn-sm action-btn action-view" title="View"
+                  data-id="{{ r.RECEIVE_ID }}"
+                  data-item="{{ r.ITEM_NAME|default:'—' }}"
+                  data-dept="{{ r.DEPT_NAME|default:'—' }}"
+                  data-date="{{ r.RECEIVE_DATE|default:'—' }}"
+                  data-qty="{{ r.QTY_RECEIVED|default:'—' }}"
+                  data-uom="{{ r.UOM|default:'—' }}"
+                  data-remarks="{{ r.REMARKS|default:'—' }}"
+                  data-created-by="{{ r.CREATED_BY|default:'—' }}"
+                  data-created-date="{{ r.CREATED_DATE|default:'—' }}"
+                  data-updated-by="{{ r.LAST_UPDATED_BY|default:'—' }}"
+                  data-updated-date="{{ r.LAST_UPDATED_DATE|default:'—' }}">
+            <i class="ti ti-eye"></i>
+          </button>
+          <a href="{% url 'wastage:receiving_edit' r.RECEIVE_ID %}" class="btn btn-sm pill-edit" style="padding:5px 8px;" title="Edit"><i class="ti ti-edit"></i></a>
+          <form method="post" action="{% url 'wastage:receiving_delete' r.RECEIVE_ID %}" style="display:inline;" onsubmit="return confirm('Delete this entry?')">{% csrf_token %}<button type="submit" class="btn btn-sm pill-delete" style="padding:5px 8px;" title="Delete"><i class="ti ti-trash"></i></button></form>
+        </td>
+        <td style="font-weight:600;color:#64748B;">{{ r.RECEIVE_ID }}</td>
+        {% if sees_all_divisions %}<td><span class="badge" style="background:#F3F4F6;color:#374151;font-size:11px;">{{ r.DIVISION }}</span></td>{% endif %}
+        <td>{{ r.DEPT_NAME|default:"—" }}</td>
+        <td><strong>{{ r.ITEM_NAME|default:"—" }}</strong></td>
+        <td style="text-align:right;font-weight:700;color:#1E293B;">{{ r.QTY_RECEIVED|default:"—" }}</td>
+        <td style="color:#6B7280;">{{ r.UOM|default:"—" }}</td>
+        <td style="color:#475569;">{{ r.RECEIVE_DATE|default:"—" }}</td>
+        <td>{% if r.REMARKS %}<span style="color:#475569;">{{ r.REMARKS|truncatechars:30 }}</span>{% else %}<span style="color:#94A3B8;">—</span>{% endif %}</td>
+      </tr>
+      {% empty %}<tr><td colspan="{% if sees_all_divisions %}9{% else %}8{% endif %}" style="text-align:center;color:#6B7280;">No records found.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- View Modal (single reusable modal, populated via JS) -->
+<div class="modal fade" id="viewReceivingModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header" style="border-bottom:1px solid #eee;">
+        <h6 class="modal-title" style="font-weight:600;">Receiving Details — <span id="vw_item"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="font-size:13px;">
+        <div class="view-grid">
+          <div class="view-row"><span class="view-label">Receive ID</span><span class="view-value" id="vw_id"></span></div>
+          <div class="view-row"><span class="view-label">Department</span><span class="view-value" id="vw_dept"></span></div>
+          <div class="view-row"><span class="view-label">Item</span><span class="view-value" id="vw_item2"></span></div>
+          <div class="view-row"><span class="view-label">Quantity</span><span class="view-value" id="vw_qty"></span></div>
+          <div class="view-row"><span class="view-label">UOM</span><span class="view-value" id="vw_uom"></span></div>
+          <div class="view-row"><span class="view-label">Transaction Date</span><span class="view-value" id="vw_date"></span></div>
+          <div class="view-row"><span class="view-label">Remarks</span><span class="view-value" id="vw_remarks"></span></div>
+        </div>
+        <hr style="margin:14px 0;">
+        <div style="color:#6B7280;font-size:11px;font-weight:600;letter-spacing:0.5px;margin-bottom:8px;">INFO</div>
+        <div class="view-grid">
+          <div class="view-row"><span class="view-label">Created By</span><span class="view-value" id="vw_created_by"></span></div>
+          <div class="view-row"><span class="view-label">Created Date</span><span class="view-value" id="vw_created_date"></span></div>
+          <div class="view-row"><span class="view-label">Last Updated By</span><span class="view-value" id="vw_updated_by"></span></div>
+          <div class="view-row"><span class="view-label">Last Updated Date</span><span class="view-value" id="vw_updated_date"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Export PDF Filter Modal -->
+<div class="modal fade" id="exportPdfModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header" style="border-bottom:1px solid #eee;">
+        <h6 class="modal-title" style="font-weight:600;">Export PDF — Filters</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="get" action="{% url 'wastage:receiving_pdf' %}" id="exportPdfForm">
+        <div class="modal-body" style="font-size:13px;">
+          <!-- Preserves the screen's current Division/Period/Search filters --
+               the modal's fields below are additional, not a replacement. -->
+          {% if sees_all_divisions %}<input type="hidden" name="division" value="{{ division_filter }}">{% endif %}
+          <input type="hidden" name="period" value="{{ selected_period }}">
+          {% if search %}<input type="hidden" name="q" value="{{ search }}">{% endif %}
+
+          <div class="mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <label class="form-label mb-0" style="font-size:13px;font-weight:500;">Department</label>
+              <div class="form-check" style="font-size:12px;">
+                <input class="form-check-input" type="checkbox" id="exportAllDepartments" checked>
+                <label class="form-check-label" for="exportAllDepartments">All Departments</label>
+              </div>
+            </div>
+            <select name="department_id[]" id="exportDepartmentSelect" class="form-select form-select-sm" multiple size="4" disabled>
+              {% for d in export_departments %}<option value="{{ d.DEPT_ID }}">{{ d.DEPT_NAME }}</option>{% endfor %}
+            </select>
+            <small style="color:#6B7280;font-size:11px;">Uncheck "All" to pick one or more specific departments (Ctrl/Cmd-click for multiple).</small>
+          </div>
+
+          <div class="mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <label class="form-label mb-0" style="font-size:13px;font-weight:500;">Item</label>
+              <div class="form-check" style="font-size:12px;">
+                <input class="form-check-input" type="checkbox" id="exportAllItems" checked>
+                <label class="form-check-label" for="exportAllItems">All Items</label>
+              </div>
+            </div>
+            <select name="item_id[]" id="exportItemSelect" class="form-select form-select-sm" multiple size="4" disabled>
+              {% for i in export_items %}<option value="{{ i.ITEM_ID }}">{{ i.ITEM_NAME }}</option>{% endfor %}
+            </select>
+            <small style="color:#6B7280;font-size:11px;">Uncheck "All" to pick one or more specific items (Ctrl/Cmd-click for multiple).</small>
+          </div>
+
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label mb-0" style="font-size:13px;font-weight:500;">From Date</label>
+              <input type="date" name="date_from" class="form-control form-control-sm">
+            </div>
+            <div class="col-6">
+              <label class="form-label mb-0" style="font-size:13px;font-weight:500;">To Date</label>
+              <input type="date" name="date_to" class="form-control form-control-sm">
+            </div>
+          </div>
+          <small style="color:#6B7280;font-size:11px;">Leave both blank to use the Period selected on the screen instead.</small>
+        </div>
+        <div class="modal-footer" style="border-top:1px solid #eee;">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-sm" style="background:#10B981;color:#FFFFFF;"><i class="ti ti-file-type-pdf me-1"></i> Generate PDF</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<style>
+.view-grid { display:flex; flex-direction:column; gap:8px; }
+.view-row { display:flex; justify-content:space-between; gap:12px; }
+.view-label { color:#6B7280; }
+.view-value { font-weight:500; color:#111827; text-align:right; }
+</style>
+
+
+
+
+<script>
+/* ============================================================
+   List interactions — bulletproof build
+   - event delegation on document (placement / load-order proof)
+   - works WITH Bootstrap JS or WITHOUT it (manual modal fallback)
+   - logs to console so you can confirm it's running (F12 > Console)
+   ============================================================ */
+(function () {
+  var TAG = '[soorty:receiving_list]';
+  console.log(TAG, 'interaction script loaded');
+
+  function showModal(modalEl) {
+    if (!modalEl) { console.error(TAG, 'modal element not found: viewReceivingModal'); return; }
+    if (window.bootstrap && bootstrap.Modal) {
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      return;
+    }
+    console.warn(TAG, 'Bootstrap JS not present — using manual modal fallback');
+    modalEl.classList.add('show');
+    modalEl.style.display = 'block';
+    modalEl.removeAttribute('aria-hidden');
+    document.body.classList.add('modal-open');
+    var bd = document.createElement('div');
+    bd.className = 'modal-backdrop fade show';
+    document.body.appendChild(bd);
+    function hide() {
+      modalEl.classList.remove('show'); modalEl.style.display = 'none';
+      modalEl.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('modal-open');
+      document.querySelectorAll('.modal-backdrop').forEach(function (b) { b.remove(); });
+      document.removeEventListener('keydown', onKey);
+    }
+    function onKey(e) { if (e.key === 'Escape') hide(); }
+    bd.addEventListener('click', hide);
+    document.addEventListener('keydown', onKey);
+    modalEl.querySelectorAll('[data-bs-dismiss="modal"], .btn-close').forEach(function (x) { x.addEventListener('click', hide); });
+    modalEl.addEventListener('click', function (e) { if (e.target === modalEl) hide(); });
+  }
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('#exportPdfBtn');
+    if (btn) {
+      showModal(document.getElementById('exportPdfModal'));
+      return;
+    }
+  });
+
+  function wireAllToggle(checkboxId, selectId) {
+    var checkbox = document.getElementById(checkboxId);
+    var select = document.getElementById(selectId);
+    if (!checkbox || !select) return;
+    checkbox.addEventListener('change', function () {
+      select.disabled = checkbox.checked;
+      if (checkbox.checked) {
+        // "All" means no filter -- clear any prior selection so
+        // nothing gets submitted for this field at all.
+        Array.from(select.options).forEach(function (o) { o.selected = false; });
+      }
+    });
+  }
+  wireAllToggle('exportAllDepartments', 'exportDepartmentSelect');
+  wireAllToggle('exportAllItems', 'exportItemSelect');
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.action-view');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    console.log(TAG, 'eye clicked, id =', btn.dataset.id);
+    try {
+      document.getElementById('vw_item').textContent = btn.dataset.item;
+      document.getElementById('vw_id').textContent = btn.dataset.id;
+      document.getElementById('vw_item2').textContent = btn.dataset.item;
+      document.getElementById('vw_dept').textContent = btn.dataset.dept;
+      document.getElementById('vw_date').textContent = btn.dataset.date;
+      document.getElementById('vw_qty').textContent = btn.dataset.qty;
+      document.getElementById('vw_uom').textContent = btn.dataset.uom;
+      document.getElementById('vw_remarks').textContent = btn.dataset.remarks;
+      document.getElementById('vw_created_by').textContent = btn.dataset.createdBy;
+      document.getElementById('vw_created_date').textContent = btn.dataset.createdDate;
+      document.getElementById('vw_updated_by').textContent = btn.dataset.updatedBy;
+      document.getElementById('vw_updated_date').textContent = btn.dataset.updatedDate;
+    } catch (err) { console.error(TAG, 'populate error', err); }
+    showModal(document.getElementById('viewReceivingModal'));
+  });
+})();
+</script>
+
+{% endblock %}

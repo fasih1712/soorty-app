@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Access Denied — Soorty{% endblock %}
+{% block page_title %}Access Denied{% endblock %}
+{% block content %}
+
+<div class="erp-card" style="max-width:520px; margin:40px auto; text-align:center; padding:40px 32px;">
+  <div style="font-size:40px; color:#a32d2d; margin-bottom:12px;"><i class="ti ti-lock"></i></div>
+  <h3 style="font-size:18px; font-weight:700; color:#334155; margin-bottom:8px;">You don't have permission to access this page</h3>
+  <p style="font-size:13px; color:#6B7280; margin-bottom:24px;">
+    Your account doesn't currently have this access. If you believe this is a mistake, contact an administrator.
+  </p>
+  <a href="{% url 'wastage:home' %}" class="btn btn-sm" style="background:#10B981; color:#FFFFFF; font-size:13px; padding:8px 24px;">
+    <i class="ti ti-home me-1"></i> Return to Dashboard
+  </a>
+</div>
+{% endblock %}

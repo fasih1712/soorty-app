@@ -1,0 +1,123 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block auth_content %}
+<div class="login-page">
+
+  <!-- Ambient glow orbs -->
+  <div class="login-orb login-orb-1"></div>
+  <div class="login-orb login-orb-2"></div>
+
+  <!-- Particle network canvas -->
+  <canvas id="loginParticleCanvas"></canvas>
+
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-image-wrap">
+        <img src="{% static 'img/Soory_logo_white.png' %}" alt="Soorty" class="login-logo-image">
+      </div>
+      <h1 class="login-heading">Wastage Sales Management</h1>
+      <p class="login-subheading">Sign in to access your account</p>
+    </div>
+    <form method="post">
+      {% csrf_token %}
+      <div class="mb-3">
+        <label class="form-label">Username</label>
+        <div class="input-icon-wrap">
+          <i class="ti ti-user"></i>
+          <input type="text" name="username" class="form-control" placeholder="Enter username" autofocus required>
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Password</label>
+        <div class="input-icon-wrap">
+          <i class="ti ti-lock"></i>
+          <input type="password" name="password" class="form-control" placeholder="Enter password" required>
+        </div>
+      </div>
+      <div class="mb-4">
+        <label class="form-label">Division</label>
+        <div class="input-icon-wrap">
+          <i class="ti ti-building"></i>
+          <select name="division" class="form-select" required>
+            <option value="" disabled selected>-- Select your division --</option>
+            {% for code, label in division_choices %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      {% if messages %}
+        {% for message in messages %}
+          <div class="alert alert-{{ message.tags }} py-2 mb-3" style="font-size:13px;">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+      <button type="submit" class="btn btn-dark w-100" style="background:#10B981; border:none; padding:10px; font-weight:600;">
+        Sign In <i class="ti ti-arrow-right" style="margin-left:4px;"></i>
+      </button>
+    </form>
+    <p class="login-footer">Internal Management System</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  var canvas = document.getElementById('loginParticleCanvas');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var particles = [];
+  var particleCount = 45;
+  var maxDistance = 140;
+
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  function Particle() {
+    this.x = Math.random() * canvas.width;
+    this.y = Math.random() * canvas.height;
+    this.vx = (Math.random() - 0.5) * 0.5;
+    this.vy = (Math.random() - 0.5) * 0.5;
+    this.radius = Math.random() * 2 + 1;
+  }
+  Particle.prototype.update = function () {
+    this.x += this.vx;
+    this.y += this.vy;
+    if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+    if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+  };
+  Particle.prototype.draw = function () {
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(52, 211, 153, 0.6)';
+    ctx.fill();
+  };
+
+  for (var i = 0; i < particleCount; i++) particles.push(new Particle());
+
+  function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (var i = 0; i < particles.length; i++) {
+      particles[i].update();
+      particles[i].draw();
+      for (var j = i + 1; j < particles.length; j++) {
+        var dx = particles[i].x - particles[j].x;
+        var dy = particles[i].y - particles[j].y;
+        var dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < maxDistance) {
+          ctx.beginPath();
+          ctx.moveTo(particles[i].x, particles[i].y);
+          ctx.lineTo(particles[j].x, particles[j].y);
+          var alpha = (1 - dist / maxDistance) * 0.22;
+          ctx.strokeStyle = 'rgba(16, 185, 129, ' + alpha + ')';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(animate);
+  }
+  animate();
+})();
+</script>
+{% endblock %}

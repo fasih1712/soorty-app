@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block title %}{{ name }} | Finance{% endblock %}
+{% block page_title %}{{ name }}{% endblock %}
+{% block page_subtitle %}Customer ledger{% endblock %}
+{% block content %}
+{% include 'finance/_theme.html' %}
+<div class="fin-theme">
+<div class="fin-card mb-3">
+  <div class="fin-card-head">Advances</div>
+  <div class="fin-table-wrap"><table class="table align-middle mb-0">
+    <thead><tr><th>Date</th><th>Kind</th><th>Mode</th><th>Reference</th><th class="text-end">Amount</th><th class="text-end">Remaining</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for a in advances %}
+      <tr>
+        <td>{{ a.ADVANCE_DATE }}</td><td>{{ a.KIND|title }}</td><td>{{ a.PAY_MODE|default:"-"|title }}</td><td>{{ a.REFERENCE|default:"-" }}</td>
+        <td class="text-end text-money">{{ a.AMOUNT|floatformat:"2g" }}</td><td class="text-end text-money">{{ a.REMAINING|floatformat:"2g" }}</td>
+        <td>{% if a.STATUS == 'ACTIVE' %}<span class="badge-status badge-ok">Active</span>{% else %}<span class="badge-status badge-neutral">Reversed</span>{% endif %}</td>
+        <td>
+          {% if a.STATUS == 'ACTIVE' and a.AMOUNT == a.REMAINING %}
+          <form method="post" action="{% url 'finance:advance_reverse' a.ADVANCE_ID %}" class="d-flex gap-2" onsubmit="return confirm('Reverse this advance?');">
+            {% csrf_token %}<input type="hidden" name="next" value="{% url 'finance:customer_ledger' party_id %}">
+            <input name="reason" class="form-control form-control-sm" placeholder="Reason" minlength="5" required>
+            <button class="btn btn-sm btn-outline-danger-fin" type="submit">Reverse</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% empty %}<tr><td colspan="8" class="text-center text-muted py-3">No advances.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+<div class="fin-card">
+  <div class="fin-card-head">Ledger</div>
+  <div class="fin-table-wrap"><table class="table align-middle mb-0">
+    <thead><tr><th>Date</th><th>Voucher</th><th>Account</th><th>Narration</th><th class="text-end">Debit</th><th class="text-end">Credit</th><th class="text-end">Advance balance</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.VOUCHER_DATE }}</td>
+        <td><a href="{% url 'finance:voucher_view' r.VOUCHER_ID %}">{{ r.VOUCHER_NO }}</a>{% if r.STATUS == 'REVERSED' %} <span class="badge-status badge-neutral">Reversed</span>{% endif %}</td>
+        <td>{{ r.ACCOUNT_CODE }} {{ r.ACCOUNT_NAME }}</td><td class="small text-muted">{{ r.NARRATION|default:"" }}</td>
+        <td class="text-end text-money">{% if r.DEBIT %}{{ r.DEBIT|floatformat:"2g" }}{% endif %}</td>
+        <td class="text-end text-money">{% if r.CREDIT %}{{ r.CREDIT|floatformat:"2g" }}{% endif %}</td>
+        <td class="text-end text-money">{% if r.ADVANCE_BALANCE is not None %}<strong>{{ r.ADVANCE_BALANCE|floatformat:"2g" }}</strong>{% endif %}</td>
+      </tr>
+    {% empty %}<tr><td colspan="7" class="text-center text-muted py-3">No entries.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+</div>
+{% endblock %}

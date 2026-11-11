@@ -1,0 +1,302 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:receiving_list' %}{% endblock %}
+{% block title %}{{ title }} — Soorty{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block content %}
+
+<link href="https://cdnjs.cloudflare.com/ajax/libs/tom-select/2.3.1/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tom-select/2.3.1/js/tom-select.complete.min.js"></script>
+<style>
+  /* Match the existing form-control-sm/form-select sizing used throughout
+     this form -- Tom Select's default footprint is taller otherwise. */
+  .ts-wrapper.form-select-sm .ts-control, .ts-wrapper .ts-control { font-size: 13px; min-height: calc(1.5em + .5rem + 2px); padding: .25rem .5rem; }
+  .ts-wrapper.is-invalid .ts-control { border-color: #dc3545; }
+  /* Menu is attached to <body> (see makeSearchSelect) so it sits above the
+     table's scroll container instead of being clipped inside it. */
+  .ts-dropdown { font-size: 13px; z-index: 3000; max-height: 280px; }
+  .ts-dropdown .ts-dropdown-content { max-height: 260px; }
+  .ts-dropdown .no-results { padding: 8px 12px; color: #6B7280; font-style: italic; }
+  /* Placeholder vanishes the moment the user clicks, so typing starts clean. */
+  .ts-wrapper.focus .ts-control > input::placeholder { color: transparent; }
+</style>
+<script>
+  // One shared setup for every searchable dropdown on this page.
+  function makeSearchSelect(el, label, clearable) {
+    // Blank the "-- Department --" option: the label is shown as a placeholder
+    // instead of as a fake selected value, so it can actually be cleared on click.
+    var first = el.options[0];
+    if (first && first.value === '') first.text = '';
+    return new TomSelect(el, {
+      create: false,
+      maxOptions: null,          // show ALL matches (default would cap at 50)
+      dropdownParent: 'body',    // <-- fixes the clipped / empty list under the box
+      openOnFocus: true,         // click -> list expands downward immediately
+      selectOnTab: true,
+      placeholder: label,
+      plugins: clearable ? ['clear_button'] : [],
+      render: {
+        no_results: function () {
+          return '<div class="no-results">No matching ' + label.toLowerCase() +
+                 ' found \u2014 check spelling before adding a new one.</div>';
+        }
+      }
+    });
+  }
+</script>
+
+{% if record is None %}
+<!-- ===================== MULTI-ENTRY GRID MODE ===================== -->
+<div class="erp-card">
+  <div class="erp-card-header">
+  </div>
+
+  <div class="table-responsive" style="border: 1px solid #E5E7EB; border-radius: 6px;">
+    <table class="table table-sm align-middle mb-0" id="receivingGrid" style="font-size: 13px; width: max-content; min-width: 100%;" data-dynamic-columns="false">
+      <thead style="background: #f9f9f9; color: #6B7280;">
+        <tr>
+          <th style="width:50px;" class="text-center">&nbsp;</th>
+          <th style="min-width:140px;">Division *</th>
+          <th style="min-width:180px;">Department</th>
+          <th style="min-width:200px;">Item *</th>
+          <th style="min-width:130px;">Quantity *</th>
+          <th style="width:70px;">UOM</th>
+          <th style="min-width:160px;">Transaction Date *</th>
+          <th style="min-width:220px;">Remarks</th>
+          <th style="width:90px;" class="text-center">Action</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="mt-3 d-flex justify-content-between align-items-center">
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="addRowBtn" style="font-size:13px;">
+      <i class="ti ti-plus"></i> Add New Row
+    </button>
+    <div class="d-flex gap-2">
+      <a href="{% url 'wastage:receiving_list' %}" class="btn btn-sm btn-outline-secondary" style="font-size:13px; padding:6px 18px;">Exit</a>
+      <button type="button" class="btn btn-sm btn-dark" id="saveBtn" style="background:#10B981;border:none;padding:6px 24px;font-size:13px;">
+        <i class="ti ti-device-floppy me-1"></i> Save
+      </button>
+    </div>
+  </div>
+</div>
+
+<form method="post" id="bulkReceivingForm" style="display:none;">
+  {% csrf_token %}
+</form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  let rowCount = 0;
+  const tbody = document.querySelector('#receivingGrid tbody');
+  const addRowBtn = document.getElementById('addRowBtn');
+  const saveBtn = document.getElementById('saveBtn');
+  const bulkForm = document.getElementById('bulkReceivingForm');
+
+  function todayLocalISO() {
+    // Local calendar date in YYYY-MM-DD, matching what <input type="date">
+    // expects. Using new Date().toISOString() directly would use UTC and
+    // can show the wrong day near midnight depending on the user's timezone.
+    const d = new Date();
+    const offsetMs = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - offsetMs).toISOString().slice(0, 10);
+  }
+
+  function createGridRow(focusFirst = false) {
+    rowCount++;
+    const tr = document.createElement('tr');
+    tr.className = 'matrix-row';
+    tr.innerHTML = `
+      <td class="text-center text-muted fw-semibold row-num">${rowCount}</td>
+      <td>
+        {% if sees_all_divisions %}
+        <select class="form-control form-control-sm input-division" required style="font-size:13px;" tabindex="-1">
+          {% for code, label in division_choices %}<option value="{{ code }}" {% if request.user.division == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+        {% else %}
+        <span class="badge" style="background:#ECFDF5;color:#047857;font-weight:600;padding:6px 10px;white-space:nowrap;" title="Your assigned division — cannot be changed here">
+          <i class="ti ti-lock" style="font-size:11px;margin-right:4px;"></i>Division {{ request.user.division|default:"08" }}
+        </span>
+        <input type="hidden" class="input-division" value="{{ request.user.division|default:'08' }}">
+        {% endif %}
+        <input type="hidden" class="input-recby" value="">
+      </td>
+      <td>
+        <select class="form-control form-control-sm input-dept" style="font-size:13px;">
+          <option value="">-- Department --</option>
+          {% for d in departments %}<option value="{{ d.DEPT_ID }}">{{ d.DEPT_NAME }}</option>{% endfor %}
+        </select>
+      </td>
+      <td>
+        <select class="form-control form-control-sm input-item" required style="font-size:13px;">
+          <option value="">-- Item --</option>
+          {% for it in items %}<option value="{{ it.ITEM_ID }}" data-unit="{{ it.UNIT|default:'' }}">{{ it.ITEM_NAME }}</option>{% endfor %}
+        </select>
+      </td>
+      <td><input type="number" step="0.001" class="form-control form-control-sm input-qty" required style="font-size:13px;"></td>
+      <td class="text-center input-uom" style="color:#6B7280;">&nbsp;</td>
+      <td><input type="date" class="form-control form-control-sm input-date" required style="font-size:13px;" value="${todayLocalISO()}"></td>
+      <td><input type="text" class="form-control form-control-sm input-remarks" placeholder="Optional..." style="font-size:13px;"></td>
+      <td class="text-center">
+        <button type="button" class="btn btn-sm btn-outline-danger btn-remove" style="padding: 2px 8px; font-size:11px;"><i class="ti ti-trash"></i></button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+
+    tr.querySelector('.btn-remove').addEventListener('click', function () {
+      if (tbody.querySelectorAll('.matrix-row').length <= 1) return;
+      tr.remove();
+      renumberRows();
+    });
+
+    // Type-ahead search on every dropdown in this row (Division, when
+    // shown; Department; Item). Tom Select keeps the underlying <select>
+    // in sync, so .value reads below and the required-field checks in
+    // the Save handler both continue working unchanged.
+    tr.querySelectorAll('select').forEach(function (sel) {
+      var label = sel.classList.contains('input-dept') ? 'Department'
+                : sel.classList.contains('input-item') ? 'Item' : 'Division';
+      makeSearchSelect(sel, label, sel.classList.contains('input-dept'));
+    });
+
+    const uomLabel = tr.querySelector('.input-uom');
+    const itemInput = tr.querySelector('.input-item');
+    itemInput.addEventListener('change', function () {
+      const selectedOption = itemInput.options[itemInput.selectedIndex];
+      const unit = selectedOption ? selectedOption.getAttribute('data-unit') : '';
+      uomLabel.textContent = unit || '';
+    });
+
+    // Tab on last field of the last row spawns a new row
+    const deptInput = tr.querySelector('.input-dept');
+    const remarksInput = tr.querySelector('.input-remarks');
+    remarksInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Tab' && !e.shiftKey && tr === tbody.lastElementChild) {
+        if (itemInput.value.trim() !== '') {
+          e.preventDefault();
+          createGridRow(true);
+        }
+      }
+    });
+
+    if (focusFirst) deptInput.tomselect.focus();
+    renumberRows();
+  }
+
+  function renumberRows() {
+    const rows = tbody.querySelectorAll('.matrix-row');
+    rows.forEach((row, idx) => {
+      row.querySelector('.row-num').textContent = idx + 1;
+      row.querySelector('.btn-remove').disabled = (rows.length === 1);
+    });
+  }
+
+  addRowBtn.addEventListener('click', function () { createGridRow(true); });
+
+  saveBtn.addEventListener('click', function () {
+    let isValid = true;
+    const rows = tbody.querySelectorAll('.matrix-row');
+    rows.forEach(row => {
+      ['input-item', 'input-date', 'input-qty'].forEach(cls => {
+        const el = row.querySelector('.' + cls);
+        // For a select wrapped by Tom Select, the invalid-state class
+        // needs to land on its visible wrapper too -- the original
+        // <select> is hidden, so a class there alone shows nothing.
+        const wrapper = el.tomselect ? el.tomselect.wrapper : null;
+        if (!el.value.trim()) {
+          el.classList.add('is-invalid');
+          if (wrapper) wrapper.classList.add('is-invalid');
+          isValid = false;
+        } else {
+          el.classList.remove('is-invalid');
+          if (wrapper) wrapper.classList.remove('is-invalid');
+        }
+      });
+    });
+    if (!isValid) return;
+
+    bulkForm.innerHTML = '{% csrf_token %}';
+    rows.forEach(row => {
+      const item = row.querySelector('.input-item').value.trim();
+      if (!item) return;
+      const add = (name, val) => {
+        const h = document.createElement('input');
+        h.type = 'hidden'; h.name = name; h.value = val;
+        bulkForm.appendChild(h);
+      };
+      add('item_id[]', item);
+      add('division[]', row.querySelector('.input-division').value.trim());
+      add('dept_id[]', row.querySelector('.input-dept').value.trim());
+      add('received_by[]', row.querySelector('.input-recby').value.trim());
+      add('receive_date[]', row.querySelector('.input-date').value.trim());
+      add('qty_received[]', row.querySelector('.input-qty').value.trim());
+      add('remarks[]', row.querySelector('.input-remarks').value.trim());
+    });
+    bulkForm.submit();
+  });
+
+  createGridRow(false);
+});
+</script>
+
+{% else %}
+<!-- ===================== SINGLE-RECORD EDIT MODE ===================== -->
+<div class="erp-card">
+  <div class="erp-card-header"><a href="{% url 'wastage:receiving_list' %}" style="font-size:12px;color:#6B7280;">← Back</a></div>
+  <form method="post">
+    {% csrf_token %}
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Division</label>
+        <div>
+          <span class="badge" style="background:#ECFDF5;color:#047857;font-weight:600;padding:6px 10px;" title="Division is fixed at creation and cannot be changed">
+            <i class="ti ti-lock" style="font-size:11px;margin-right:4px;"></i>Division {{ record.DIVISION|default:"08" }}
+          </span>
+        </div>
+      </div>
+      <input type="hidden" name="received_by" value="{{ record.RECEIVED_BY|default:'' }}">
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Department</label>
+        <select name="dept_id" class="form-select">
+          <option value="">-- Select Department --</option>
+          {% for d in departments %}<option value="{{ d.DEPT_ID }}" {% if record and record.DEPT_ID == d.DEPT_ID %}selected{% endif %}>{{ d.DEPT_NAME }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Item *</label>
+        <select name="item_id" class="form-select" required>
+          <option value="">-- Select Item --</option>
+          {% for i in items %}<option value="{{ i.ITEM_ID }}" {% if record and record.ITEM_ID == i.ITEM_ID %}selected{% endif %}>{{ i.ITEM_NAME }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Quantity *</label>
+        <input type="number" step="0.001" name="qty_received" class="form-control" value="{{ record.QTY_RECEIVED|default:'' }}" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Transaction Date *</label>
+        <input type="date" name="receive_date" class="form-control" value="{{ record.RECEIVE_DATE|default:'' }}" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:13px;font-weight:500;">Remarks</label>
+        <input type="text" name="remarks" class="form-control" value="{{ record.REMARKS|default:'' }}">
+      </div>
+    </div>
+    <div class="mt-4 d-flex gap-2">
+      <button type="submit" class="btn btn-dark" style="background:#10B981;border:none;padding:8px 28px;font-size:13px;"><i class="ti ti-device-floppy me-1"></i> Save</button>
+      <a href="{% url 'wastage:receiving_list' %}" class="btn btn-outline-secondary" style="font-size:13px;">Exit</a>
+    </div>
+  </form>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  // Type-ahead search on Department and Item -- Tom Select keeps the
+  // underlying <select>'s value/name/required in sync, so the existing
+  // form POST needs no changes at all.
+  makeSearchSelect(document.querySelector('select[name="dept_id"]'), 'Department', true);
+  makeSearchSelect(document.querySelector('select[name="item_id"]'), 'Item', false);
+});
+</script>
+{% endif %}
+{% endblock %}

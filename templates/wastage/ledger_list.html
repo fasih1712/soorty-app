@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% block back_fallback_url %}{% url 'wastage:home' %}{% endblock %}
+{% block title %}Stock Ledger — Soorty{% endblock %}
+{% block page_title %}Stock Ledger{% endblock %}
+{% block content %}
+<div class="erp-card">
+  <div class="erp-card-header" style="justify-content:space-between; flex-wrap:nowrap; gap:12px;">
+    <span style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:8px;">
+      Ledger Records
+      <span class="badge" style="background:#ECFDF5;color:#047857;border:1px solid rgba(4,120,87,.15);font-size:11px;font-weight:700;text-transform:none;letter-spacing:normal;">{{ records|length }} Entries</span>
+    </span>
+    <div style="display:flex; align-items:center; gap:12px;">
+      {% if sees_all_divisions %}
+      <form method="get" style="display:inline;">
+        <select name="division" class="form-select form-select-sm" style="min-width:150px;" onchange="this.form.submit()">
+          <option value="ALL" {% if division_filter == 'ALL' %}selected{% endif %}>All Divisions</option>
+          {% for code, label in division_choices %}<option value="{{ code }}" {% if division_filter == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </form>
+      <span style="font-size:12px;color:#6B7280;"><i class="ti ti-world" style="font-size:11px;"></i> All-division access</span>
+      {% else %}
+      <span style="font-size:12px;color:#6B7280;"><i class="ti ti-lock" style="font-size:11px;"></i> Division {{ division }}</span>
+      {% endif %}
+      <form method="get" action="{% url 'wastage:stock_ledger_pdf' %}" style="display:flex;align-items:center;gap:6px;margin:0;">
+        {% if sees_all_divisions %}<input type="hidden" name="division" value="{{ division_filter }}">{% endif %}
+        <select name="period" class="form-select form-select-sm" style="min-width:140px;" title="Month for the PDF report">
+          {% for mo in month_options %}<option value="{{ mo.month }}-{{ mo.year }}" {% if mo.selected %}selected{% endif %}>{{ mo.label }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="btn btn-sm" style="background:#10B981;color:#FFFFFF;font-size:12px;padding:5px 14px;white-space:nowrap;"><i class="ti ti-file-type-pdf me-1"></i> Export PDF</button>
+      </form>
+    </div>
+  </div>
+  <table class="table table-sm table-hover table-col-divided" style="font-size:13px;">
+    <colgroup>
+      <col style="width:55px;">
+      {% if sees_all_divisions %}<col style="width:90px;">{% endif %}
+      <col>
+      <col style="width:120px;">
+      <col style="width:90px;">
+      <col style="width:90px;">
+      <col style="width:90px;">
+      <col style="width:100px;">
+      <col style="width:100px;">
+    </colgroup>
+    <thead>
+      <tr><th>ID</th>{% if sees_all_divisions %}<th>Division</th>{% endif %}<th>Item</th><th>Date</th><th>Type</th><th style="text-align:right;">Qty In</th><th style="text-align:right;">Qty Out</th><th style="text-align:right;">Balance</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for r in records %}
+      <tr>
+        <td>{{ r.LEDGER_ID }}</td>
+        {% if sees_all_divisions %}<td><span class="badge" style="background:#F3F4F6;color:#374151;font-size:11px;">{{ r.DIVISION }}</span></td>{% endif %}
+        <td><strong>{{ r.ITEM_NAME|default:"—" }}</strong></td>
+        <td>{{ r.TXN_DATE|default:"—" }}</td>
+        <td><span class="badge" style="background:#e6f1fb;color:#185fa5;">{{ r.TXN_TYPE|default:"—" }}</span></td>
+        <td style="text-align:right;">{{ r.QTY_IN|default:"0" }}</td>
+        <td style="text-align:right;">{{ r.QTY_OUT|default:"0" }}</td>
+        <td style="text-align:right;"><strong>{{ r.BALANCE|default:"0" }}</strong></td>
+        <td>
+          <a href="{% url 'wastage:ledger_edit' r.LEDGER_ID %}" class="btn btn-sm pill-edit" style="padding:5px 8px;" title="Edit"><i class="ti ti-edit"></i></a>
+          <form method="post" action="{% url 'wastage:ledger_delete' r.LEDGER_ID %}" style="display:inline;" onsubmit="return confirm('Delete?')">{% csrf_token %}<button type="submit" class="btn btn-sm pill-delete" style="padding:5px 8px;" title="Delete"><i class="ti ti-trash"></i></button></form>
+        </td>
+      </tr>
+      {% empty %}<tr><td colspan="{% if sees_all_divisions %}9{% else %}8{% endif %}" style="text-align:center;color:#6B7280;">No records found.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

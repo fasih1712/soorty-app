@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% block title %}Settings | Finance{% endblock %}
+{% block page_title %}Finance Settings{% endblock %}
+{% block page_subtitle %}Changes apply from the next posting; past entries are never rewritten{% endblock %}
+{% block content %}
+{% include 'finance/_theme.html' %}
+<div class="fin-theme">
+<div class="fin-card">
+  <div class="fin-table-wrap"><table class="table table-hover align-middle mb-0" data-dynamic-columns="false">
+    <thead><tr><th style="width:22%">Setting</th><th style="width:30%">Value</th><th>What it does</th><th style="width:16%">Last changed</th></tr></thead>
+    <tbody>
+    {% for s in settings %}
+      <tr>
+        <td><strong>{{ s.SETTING_KEY }}</strong></td>
+        <td>
+          {% if s.IS_EDITABLE %}
+          <form method="post" action="{% url 'finance:setting_update' s.SETTING_KEY %}" class="d-flex gap-2">
+            {% csrf_token %}
+            {% if s.VALUE_TYPE == 'YN' %}
+              <select name="value" class="form-select form-select-sm"><option value="Y" {% if s.SETTING_VALUE == 'Y' %}selected{% endif %}>Y</option><option value="N" {% if s.SETTING_VALUE == 'N' %}selected{% endif %}>N</option></select>
+            {% elif s.VALUE_TYPE == 'CHOICE' %}
+              <select name="value" class="form-select form-select-sm">
+                {% for o in s.OPTION_LIST %}<option value="{{ o }}" {% if o == s.SETTING_VALUE %}selected{% endif %}>{{ o }}</option>{% endfor %}
+              </select>
+            {% else %}
+              <input name="value" value="{{ s.SETTING_VALUE|default:'' }}" class="form-control form-control-sm">
+            {% endif %}
+            <button class="btn btn-sm btn-outline-navy" type="submit">Save</button>
+          </form>
+          {% else %}{{ s.SETTING_VALUE }} <span class="text-muted small">(fixed)</span>{% endif %}
+        </td>
+        <td class="small text-muted">{{ s.DESCRIPTION }}</td>
+        <td class="small">{% if s.UPDATED_BY %}{{ s.UPDATED_AT }}<br>{{ s.UPDATED_BY }}{% else %}-{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+</div>
+{% endblock %}

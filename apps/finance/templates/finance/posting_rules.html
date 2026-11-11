@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}Posting Rules | Finance{% endblock %}
+{% block page_title %}Posting Rules{% endblock %}
+{% block page_subtitle %}Which accounts each event debits and credits. Reversals mirror the original entry.{% endblock %}
+{% block content %}
+{% include 'finance/_theme.html' %}
+<div class="fin-theme">
+<div class="fin-card">
+  <div class="fin-table-wrap"><table class="table table-hover align-middle mb-0" data-dynamic-columns="false">
+    <thead><tr><th style="width:18%">Event</th><th style="width:20%">Description</th><th style="width:48%">Debit / Credit</th><th>Last changed</th></tr></thead>
+    <tbody>
+    {% for r in rules %}
+      <tr>
+        <td><strong>{{ r.EVENT_CODE }}</strong></td>
+        <td class="small text-muted">{{ r.DESCRIPTION }}</td>
+        <td>
+          <form method="post" action="{% url 'finance:posting_rule_update' r.RULE_ID %}" class="d-flex flex-wrap gap-2 align-items-center">
+            {% csrf_token %}
+            <span class="small text-muted">Dr</span>
+            <select name="debit" class="form-select form-select-sm" style="width:auto;">
+              {% for a in keyed_accounts %}<option value="{{ a.SYSTEM_KEY }}" {% if a.SYSTEM_KEY == r.DEBIT_ACCOUNT_KEY %}selected{% endif %}>{{ a.ACCOUNT_CODE }} {{ a.ACCOUNT_NAME }}</option>{% endfor %}
+            </select>
+            <span class="small text-muted">Cr</span>
+            <select name="credit" class="form-select form-select-sm" style="width:auto;">
+              {% for a in keyed_accounts %}<option value="{{ a.SYSTEM_KEY }}" {% if a.SYSTEM_KEY == r.CREDIT_ACCOUNT_KEY %}selected{% endif %}>{{ a.ACCOUNT_CODE }} {{ a.ACCOUNT_NAME }}</option>{% endfor %}
+            </select>
+            <button class="btn btn-sm btn-outline-navy" type="submit">Save</button>
+          </form>
+        </td>
+        <td class="small">{% if r.UPDATED_BY %}{{ r.UPDATED_AT }}<br>{{ r.UPDATED_BY }}{% else %}-{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+<p class="section-note mt-3 mb-0">Only accounts that carry a system key can be chosen. A change applies from the next posting; reversals always mirror the original entry.</p>
+</div>
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% block title %}Periods | Finance{% endblock %}
+{% block page_title %}Accounting Periods{% endblock %}
+{% block page_subtitle %}Months lock in order; only the latest locked month can be reopened{% endblock %}
+{% block content %}
+{% include 'finance/_theme.html' %}
+<div class="fin-theme">
+<div class="fin-card">
+  <div class="fin-card-head">
+    <form method="get" class="d-flex gap-2 align-items-center">
+      <label class="small text-muted mb-0">Division</label>
+      <select name="division" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
+        {% for code, label in divisions %}<option value="{{ code }}" {% if code == division %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </form>
+  </div>
+  <div class="fin-table-wrap"><table class="table table-hover align-middle mb-0" data-dynamic-columns="false">
+    <thead><tr><th>Month</th><th>Status</th><th>Locked by</th><th>Last reopen reason</th><th style="width:34%">Actions</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><strong>{{ r.label }}</strong></td>
+        <td>{% if r.status == 'LOCKED' %}<span class="badge-status badge-warn">Locked</span>{% else %}<span class="badge-status badge-ok">Open</span>{% endif %}</td>
+        <td class="small">{% if r.locked_by and r.status == 'LOCKED' %}{{ r.locked_by }}<br>{{ r.locked_at }}{% else %}-{% endif %}</td>
+        <td class="small text-muted">{{ r.reopen_reason|default:"-" }}</td>
+        <td>
+          {% if r.can_lock %}
+          <form method="post" action="{% url 'finance:period_lock' %}" class="d-inline" onsubmit="return confirm('Lock {{ r.label }}? No entries can be posted into it afterwards.');">
+            {% csrf_token %}<input type="hidden" name="division" value="{{ division }}"><input type="hidden" name="year" value="{{ r.year }}"><input type="hidden" name="month" value="{{ r.month }}">
+            <button class="btn btn-sm btn-outline-navy" type="submit">Lock</button>
+          </form>
+          {% endif %}
+          {% if r.can_reopen %}
+          <form method="post" action="{% url 'finance:period_reopen' %}" class="d-flex gap-2">
+            {% csrf_token %}<input type="hidden" name="division" value="{{ division }}"><input type="hidden" name="year" value="{{ r.year }}"><input type="hidden" name="month" value="{{ r.month }}">
+            <input name="reason" class="form-control form-control-sm" placeholder="Reason to reopen" minlength="5" required>
+            <button class="btn btn-sm btn-outline-danger-fin" type="submit">Reopen</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+<p class="section-note mt-3 mb-0">A locked month accepts no new entries. Corrections after locking are made by reversal in an open month.</p>
+</div>
+{% endblock %}

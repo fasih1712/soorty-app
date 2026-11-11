@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }} | Finance{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block page_subtitle %}Finance{% endblock %}
+{% block content %}
+{% include 'finance/_theme.html' %}
+<div class="fin-theme">
+<div class="fin-card" style="max-width:640px;">
+  <div class="fin-card-body">
+    {% if errors %}<div class="fin-alert fin-alert-danger"><ul class="mb-0">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+    {% if action == 'opening' %}<div class="fin-alert fin-alert-info">Opening balances are dated on the cut-over date, one per customer and division, from the reconciled figures.</div>{% endif %}
+    <form method="post">
+      {% csrf_token %}
+      <div class="mb-3"><label class="form-label">Customer</label>
+        <select class="form-select" name="party_id" required>
+          <option value="">Choose...</option>
+          {% for c in customers %}<option value="{{ c.VENDOR_ID }}" {% if form.party_id|stringformat:"s" == c.VENDOR_ID|stringformat:"s" %}selected{% endif %}>{{ c.VENDOR_NAME }}</option>{% endfor %}
+        </select></div>
+      <div class="mb-3"><label class="form-label">Division</label>
+        <select class="form-select" name="division" required>
+          {% for code, label in divisions %}<option value="{{ code }}" {% if form.division == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></div>
+      {% if action == 'advance' %}
+      <div class="mb-3"><label class="form-label">Date received</label>
+        <input class="form-control" type="date" name="advance_date" value="{{ form.advance_date|default:today }}" max="{{ today }}" required></div>
+      <div class="mb-3"><label class="form-label">Paid by</label>
+        <select class="form-select" name="mode">
+          <option value="BANK" {% if form.mode == 'BANK' %}selected{% endif %}>Bank</option>
+          <option value="CASH" {% if form.mode == 'CASH' %}selected{% endif %}>Cash</option>
+        </select></div>
+      {% endif %}
+      <div class="mb-3"><label class="form-label">Amount (PKR)</label>
+        <input class="form-control" name="amount" inputmode="decimal" value="{{ form.amount|default:'' }}" required></div>
+      <div class="mb-3"><label class="form-label">Reference (cheque / transfer no.)</label>
+        <input class="form-control" name="reference" maxlength="100" value="{{ form.reference|default:'' }}"></div>
+      <button class="btn btn-navy" type="submit">Save</button>
+      <a class="btn btn-outline-navy" href="{% url 'finance:customers' %}">Cancel</a>
+    </form>
+  </div>
+</div>
+</div>
+{% endblock %}
