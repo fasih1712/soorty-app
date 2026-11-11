@@ -1,0 +1,23 @@
+# Lives on the EC2 server at /opt/soorty/docker-compose.prod.yml (next to .env).
+# The GitHub Actions workflow copies this file there and runs it.
+services:
+  soorty-app:
+    image: ghcr.io/fasih1712/soorty-app:latest
+    container_name: soorty-app
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${APP_PORT:-8090}:8000"
+    volumes:
+      - soorty_media:/app/media   # uploaded CNIC files etc. survive redeploys
+      - soorty_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/accounts/login/',timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  soorty_media:
+  soorty_logs:

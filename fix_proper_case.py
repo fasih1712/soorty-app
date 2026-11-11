@@ -2,13 +2,14 @@
 One-time script to convert existing varchar data in wst_djn_ tables to Proper Case.
 Run once: python fix_proper_case.py
 """
+import os
 import oracledb
 
-DB_HOST = '10.8.5.97'
-DB_PORT = '1521'
-DB_SERVICE = 'test1'
-DB_USER = 'apxprod'
-DB_PASSWORD = 'apxprod'
+DB_HOST = os.environ.get('DB_HOST', '')
+DB_PORT = os.environ.get('DB_PORT', '1521')
+DB_SERVICE = os.environ.get('DB_SERVICE_NAME', '')
+DB_USER = os.environ.get('DB_USER', '')
+DB_PASSWORD = os.environ.get('DB_PASSWORD', '')
 
 
 def to_proper_case(value):

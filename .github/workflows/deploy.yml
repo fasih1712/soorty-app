@@ -1,0 +1,75 @@
+name: Build & Deploy to EC2
+
+on:
+  # Auto-deploy on push is OFF until the EC2 target + secrets are set up.
+  # To enable, uncomment:
+  # push:
+  #   branches: [main]
+  workflow_dispatch:
+
+env:
+  IMAGE: ghcr.io/fasih1712/soorty-app
+  APP_DIR: /opt/soorty
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy compose file to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: docker-compose.prod.yml
+          target: ${{ env.APP_DIR }}
+
+      - name: Pull & restart
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd ${{ env.APP_DIR }}
+            if [ ! -f .env ]; then
+              echo "ERROR: ${{ env.APP_DIR }}/.env missing on server. Create it from .env.example first."
+              exit 1
+            fi
+            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u fasih1712 --password-stdin
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker image prune -f
+            sleep 15
+            docker compose -f docker-compose.prod.yml ps
+            docker logs --tail 30 soorty-app

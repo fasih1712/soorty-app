@@ -4,15 +4,18 @@ import environ
 import os
 import oracledb
 
-oracledb.init_oracle_client(
-    lib_dir=r"D:\client19c\product\client_1\bin"
-)
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 env = environ.Env(DEBUG=(bool, False))
 environ.Env.read_env(BASE_DIR / '.env')
+
+# Thick mode only when ORACLE_CLIENT_LIB is set (e.g. local Windows: D:\client19c\product\client_1\bin).
+# Leave it empty on Linux/Docker to use python-oracledb thin mode (no Instant Client needed).
+_ora_lib = os.environ.get("ORACLE_CLIENT_LIB", "").strip()
+if _ora_lib:
+    oracledb.init_oracle_client(lib_dir=_ora_lib)
 
 SECRET_KEY = env('SECRET_KEY')
 DEBUG = env('DEBUG')

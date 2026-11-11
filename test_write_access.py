@@ -8,13 +8,14 @@ inside one transaction that gets ROLLED BACK at the end, never
 committed. No trace is left in the database either way, success or
 failure.
 """
+import os
 import oracledb
 
-DB_USER = "apxWastage"
-DB_PASSWORD = "apx$Wastage"
-DB_HOST = "10.8.5.211"
-DB_PORT = 1521
-DB_SERVICE = "apxdb.seltech.com"
+DB_USER = os.environ.get("DB_USER", "")
+DB_PASSWORD = os.environ.get("DB_PASSWORD", "")
+DB_HOST = os.environ.get("DB_HOST", "")
+DB_PORT = int(os.environ.get("DB_PORT", "1521"))
+DB_SERVICE = os.environ.get("DB_SERVICE_NAME", "")
 
 dsn = oracledb.makedsn(DB_HOST, DB_PORT, service_name=DB_SERVICE)
 conn = oracledb.connect(user=DB_USER, password=DB_PASSWORD, dsn=dsn)
