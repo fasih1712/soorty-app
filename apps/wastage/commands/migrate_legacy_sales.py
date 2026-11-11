@@ -47,7 +47,7 @@ class Command(BaseCommand):
         with get_connection('migrate_legacy_sales') as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT s.SALE_ID, NVL(s.DIVISION,'08') AS DIVISION, s.VENDOR_ID,
+                    SELECT s.SALE_ID, COALESCE(s.DIVISION,'08') AS DIVISION, s.VENDOR_ID,
                            TO_CHAR(s.SALE_DATE,'YYYY-MM-DD') AS SALE_DATE,
                            s.INVOICE_NO, s.STATUS, s.TOTAL_AMOUNT
                     FROM wst_djn_sales s
@@ -102,8 +102,8 @@ class Command(BaseCommand):
                     cur.execute("""INSERT INTO wst_djn_sales_header
                         (DOC_ID, DIVISION, VENDOR_ID, DOC_DATE, INVOICE_NO, STATUS,
                          TOTAL_AMOUNT, LEGACY_SALE_ID, CREATED_DATE, POSTED_DATE)
-                        VALUES (:1,:2,:3,TO_DATE(:4,'YYYY-MM-DD'),:5,:6,:7,:8,SYSDATE,
-                                CASE WHEN :6 = 'POSTED' THEN SYSDATE ELSE NULL END)""",
+                        VALUES (:1,:2,:3,TO_DATE(:4,'YYYY-MM-DD'),:5,:6,:7,:8,LOCALTIMESTAMP(0),
+                                CASE WHEN :6 = 'POSTED' THEN LOCALTIMESTAMP(0) ELSE NULL END)""",
                         [doc_id, str(division), vendor_id, sale_date, invoice_no,
                          new_status, float(total_amount or 0), sale_id])
 

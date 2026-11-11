@@ -13,3 +13,4 @@ media
 staticfiles
 db.sqlite3
 web.config
+scripts/oracle_legacy

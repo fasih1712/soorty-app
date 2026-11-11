@@ -15,7 +15,7 @@ COPY . .
 # collectstatic needs settings to import, so give it throwaway values (no DB connection is made).
 RUN mkdir -p logs media staticfiles \
     && SECRET_KEY=build-only DEBUG=False ALLOWED_HOSTS=localhost \
-       DB_SERVICE=x DB_USER=x DB_PASSWORD=x \
+       DB_USER=x DB_PASSWORD=x \
        python manage.py collectstatic --noinput \
     && useradd --create-home --uid 1000 app \
     && chown -R app:app /app
@@ -24,9 +24,13 @@ USER app
 
 EXPOSE 8000
 
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+
 CMD ["gunicorn", "core.wsgi:application", \
      "--bind", "0.0.0.0:8000", \
-     "--workers", "3", \
+     "--workers", "2", \
      "--threads", "4", \
+     "--max-requests", "1000", \
+     "--max-requests-jitter", "100", \
      "--timeout", "120", \
      "--access-logfile", "-"]

@@ -111,7 +111,7 @@ def _fetch_parent(cur, parent_id):
 def create_account(user, form, request=None):
     """Return (account_id, errors)."""
     _guard(user)
-    import oracledb
+    from core import db
     path, ip = audit.request_context(request) if request else (None, None)
     with _connect(user.username) as conn:
         with conn.cursor() as cur:
@@ -120,22 +120,22 @@ def create_account(user, form, request=None):
             clean, errors = v.validate_account(form, None, parent, _other_codes(cur))
             if errors:
                 return None, errors
-            new_id = cur.var(oracledb.NUMBER)
             try:
                 cur.execute("""INSERT INTO wst_djn_fin_account
                                  (account_code, account_name, account_type, parent_id,
                                   is_posting, is_locked, is_active, created_by)
                                VALUES (:code, :name, :type, :parent, :posting, 0, 1, :actor)
-                               RETURNING account_id INTO :rid""",
+                               RETURNING account_id""",
                             {'code': clean['code'], 'name': clean['name'], 'type': clean['type'],
                              'parent': clean['parent_id'], 'posting': clean['is_posting'],
-                             'actor': user.username, 'rid': new_id})
-            except oracledb.DatabaseError as exc:
+                             'actor': user.username})
+                new_id = cur.fetchone()[0]
+            except db.DatabaseError as exc:
                 conn.rollback()
                 if _is_unique_violation(exc):
                     return None, [f'Account code {clean["code"]} is already in use.']
                 raise
-            account_id = int(new_id.getvalue()[0])
+            account_id = int(new_id)
             audit.record_changes(cur, user.username, 'FIN_ACCOUNT', account_id, 'CREATE',
                                  new=f'{clean["code"]} {clean["name"]} ({clean["type"]})', path=path, ip=ip)
         conn.commit()
@@ -150,7 +150,7 @@ def update_account(user, account_id, form, request=None):
         with conn.cursor() as cur:
             cur.execute(f"""SELECT {_ACCOUNT_COLS}
                             FROM wst_djn_fin_account a LEFT JOIN wst_djn_fin_account p ON p.ACCOUNT_ID = a.PARENT_ID
-                            WHERE a.ACCOUNT_ID = :1 FOR UPDATE OF a.ACCOUNT_ID""", [int(account_id)])
+                            WHERE a.ACCOUNT_ID = :1 FOR UPDATE OF a""", [int(account_id)])
             rows = _dicts(cur)
             if not rows:
                 return ['Account not found.']
@@ -164,7 +164,7 @@ def update_account(user, account_id, form, request=None):
             cur.execute("""UPDATE wst_djn_fin_account
                            SET account_code = :code, account_name = :name, account_type = :type,
                                parent_id = :parent, is_posting = :posting,
-                               last_updated_by = :actor, last_updated_date = SYSTIMESTAMP
+                               last_updated_by = :actor, last_updated_date = LOCALTIMESTAMP
                            WHERE account_id = :id""",
                         {'code': clean['code'], 'name': clean['name'], 'type': clean['type'],
                          'parent': clean['parent_id'], 'posting': clean['is_posting'],
@@ -200,7 +200,7 @@ def set_account_active(user, account_id, active, request=None):
                 conn.rollback()
                 return ''
             cur.execute("""UPDATE wst_djn_fin_account SET is_active = :f, last_updated_by = :actor,
-                           last_updated_date = SYSTIMESTAMP WHERE account_id = :id""",
+                           last_updated_date = LOCALTIMESTAMP WHERE account_id = :id""",
                         {'f': new_flag, 'actor': user.username, 'id': int(account_id)})
             audit.record_changes(cur, user.username, 'FIN_ACCOUNT', account_id, 'UPDATE',
                                  old={'is_active': row['IS_ACTIVE']}, new={'is_active': new_flag},
@@ -244,7 +244,7 @@ def update_setting(user, key, raw_value, request=None):
                 conn.rollback()
                 return ''
             cur.execute("""UPDATE wst_djn_fin_setting SET setting_value = :val, updated_by = :actor,
-                           updated_at = SYSTIMESTAMP WHERE setting_key = :k""",
+                           updated_at = LOCALTIMESTAMP WHERE setting_key = :k""",
                         {'val': clean, 'actor': user.username, 'k': key})
             audit.record_changes(cur, user.username, 'FIN_SETTING', key, 'UPDATE',
                                  old={key: row['SETTING_VALUE']}, new={key: clean}, path=path, ip=ip)
@@ -298,7 +298,7 @@ def update_posting_rule(user, rule_id, debit_key, credit_key, request=None):
                 conn.rollback()
                 return errors
             cur.execute("""UPDATE wst_djn_fin_posting_rule SET debit_account_key = :d, credit_account_key = :c,
-                           updated_by = :actor, updated_at = SYSTIMESTAMP WHERE rule_id = :id""",
+                           updated_by = :actor, updated_at = LOCALTIMESTAMP WHERE rule_id = :id""",
                         {'d': debit_key, 'c': credit_key, 'actor': user.username, 'id': int(rule_id)})
             audit.record_changes(cur, user.username, 'FIN_POSTING_RULE', rule['EVENT_CODE'], 'UPDATE',
                                  old={'debit': rule['DEBIT_ACCOUNT_KEY'], 'credit': rule['CREDIT_ACCOUNT_KEY']},
@@ -339,12 +339,12 @@ def lock_period(user, division, year, month, request=None, today=None):
             if not ok:
                 conn.rollback()
                 return message
-            cur.execute("""UPDATE wst_djn_fin_period SET status = 'LOCKED', locked_by = :actor, locked_at = SYSTIMESTAMP
+            cur.execute("""UPDATE wst_djn_fin_period SET status = 'LOCKED', locked_by = :actor, locked_at = LOCALTIMESTAMP
                            WHERE division = :d AND period_year = :y AND period_month = :m""",
                         {'actor': user.username, 'd': division, 'y': year, 'm': month})
             if cur.rowcount == 0:
                 cur.execute("""INSERT INTO wst_djn_fin_period (division, period_year, period_month, status, locked_by, locked_at)
-                               VALUES (:d, :y, :m, 'LOCKED', :actor, SYSTIMESTAMP)""",
+                               VALUES (:d, :y, :m, 'LOCKED', :actor, LOCALTIMESTAMP)""",
                             {'d': division, 'y': year, 'm': month, 'actor': user.username})
             audit.record_changes(cur, user.username, 'FIN_PERIOD', f'{division}-{year}-{month:02d}', 'UPDATE',
                                  old={'status': 'OPEN'}, new={'status': 'LOCKED'}, path=path, ip=ip)
@@ -363,7 +363,7 @@ def reopen_period(user, division, year, month, reason, request=None):
             if not ok:
                 conn.rollback()
                 return message
-            cur.execute("""UPDATE wst_djn_fin_period SET status = 'OPEN', reopened_by = :actor, reopened_at = SYSTIMESTAMP,
+            cur.execute("""UPDATE wst_djn_fin_period SET status = 'OPEN', reopened_by = :actor, reopened_at = LOCALTIMESTAMP,
                            reopen_reason = :r
                            WHERE division = :d AND period_year = :y AND period_month = :m""",
                         {'actor': user.username, 'r': reason.strip()[:300], 'd': division, 'y': year, 'm': month})
@@ -425,11 +425,11 @@ def dashboard_counts(user):
                               (SELECT COUNT(*) FROM wst_djn_fin_period WHERE STATUS = 'LOCKED') AS LOCKED_PERIODS,
                               (SELECT COUNT(*) FROM wst_djn_fin_posting_rule WHERE IS_ACTIVE = 1) AS RULES,
                               (SELECT COUNT(*) FROM wst_djn_fin_audit_log WHERE EVENT_TYPE = 'DENIED'
-                                  AND EVENT_TIME > SYSTIMESTAMP - INTERVAL '7' DAY) AS DENIED_7D,
+                                  AND EVENT_TIME > LOCALTIMESTAMP - INTERVAL '7 days') AS DENIED_7D,
                               (SELECT COUNT(*) FROM wst_djn_fin_event_log WHERE STATUS = 'FAILED') AS FAILED_EVENTS,
-                              (SELECT NVL(SUM(REMAINING),0) FROM wst_djn_fin_advance WHERE STATUS = 'ACTIVE') AS ADVANCE_TOTAL,
+                              (SELECT COALESCE(SUM(REMAINING),0) FROM wst_djn_fin_advance WHERE STATUS = 'ACTIVE') AS ADVANCE_TOTAL,
                               (SELECT COUNT(DISTINCT PARTY_ID) FROM wst_djn_fin_advance WHERE STATUS = 'ACTIVE' AND REMAINING > 0) AS ADVANCE_CUSTOMERS
-                       FROM dual""")
+                       """)
         return _dicts(cur)[0]
 
 
@@ -625,13 +625,13 @@ def fetch_voucher(user, voucher_id):
 def fetch_events(user, status=None, limit=200):
     _guard(user)
     sql = """SELECT EVENT_ID, EVENT_TYPE, SOURCE_ID, DIVISION, TO_CHAR(EVENT_DATE,'DD-Mon-YYYY') AS EVENT_DATE, STATUS,
-                    ATTEMPTS, MESSAGE, VOUCHER_IDS, ACTOR, TO_CHAR(NVL(UPDATED_AT, CREATED_AT),'DD-Mon-YYYY HH24:MI') AS WHEN_TS
+                    ATTEMPTS, MESSAGE, VOUCHER_IDS, ACTOR, TO_CHAR(COALESCE(UPDATED_AT, CREATED_AT),'DD-Mon-YYYY HH24:MI') AS WHEN_TS
              FROM wst_djn_fin_event_log WHERE 1=1"""
     params = []
     if status in ('POSTED', 'FAILED', 'SKIPPED'):
         sql += " AND STATUS = :st"
         params.append(status)
-    sql += " ORDER BY CASE STATUS WHEN 'FAILED' THEN 0 ELSE 1 END, NVL(UPDATED_AT, CREATED_AT) DESC FETCH FIRST :n ROWS ONLY"
+    sql += " ORDER BY CASE STATUS WHEN 'FAILED' THEN 0 ELSE 1 END, COALESCE(UPDATED_AT, CREATED_AT) DESC FETCH FIRST :n ROWS ONLY"
     params.append(int(limit))
     with _connect(user.username) as conn, conn.cursor() as cur:
         cur.execute(sql, params)
@@ -829,7 +829,7 @@ def fetch_statement(user, party_id, division, d_from, d_to):
         row = cur.fetchone()
         if not row:
             return None, None, []
-        cur.execute(f"""SELECT NVL(SUM(l.CREDIT - l.DEBIT), 0)
+        cur.execute(f"""SELECT COALESCE(SUM(l.CREDIT - l.DEBIT), 0)
                         FROM wst_djn_fin_voucher_line l
                         JOIN wst_djn_fin_voucher h ON h.VOUCHER_ID = l.VOUCHER_ID
                         JOIN wst_djn_fin_account a ON a.ACCOUNT_ID = l.ACCOUNT_ID AND a.SYSTEM_KEY = 'CUSTOMER_ADVANCE'
@@ -840,7 +840,7 @@ def fetch_statement(user, party_id, division, d_from, d_to):
                         FROM wst_djn_fin_voucher_line l
                         JOIN wst_djn_fin_voucher h ON h.VOUCHER_ID = l.VOUCHER_ID
                         JOIN wst_djn_fin_account a ON a.ACCOUNT_ID = l.ACCOUNT_ID AND a.SYSTEM_KEY = 'CUSTOMER_ADVANCE'
-                        LEFT JOIN wst_djn_fin_adjustment adj ON h.SOURCE_TYPE = 'ADJUSTMENT' AND TO_CHAR(adj.ADJUSTMENT_ID) = h.SOURCE_ID
+                        LEFT JOIN wst_djn_fin_adjustment adj ON h.SOURCE_TYPE = 'ADJUSTMENT' AND CAST(adj.ADJUSTMENT_ID AS TEXT) = h.SOURCE_ID
                         WHERE l.PARTY_ID = :party AND h.VOUCHER_DATE >= :dfrom AND h.VOUCHER_DATE < :dto + 1{div_sql}
                         ORDER BY h.VOUCHER_DATE, h.VOUCHER_ID, l.LINE_NO""", params)
         lines = _dicts(cur)
@@ -886,7 +886,7 @@ def fetch_general_ledger(user, account_id, division, d_from, d_to):
         found = _dicts(cur)
         if not found:
             return None, None, []
-        cur.execute(f"""SELECT NVL(SUM(l.DEBIT - l.CREDIT), 0)
+        cur.execute(f"""SELECT COALESCE(SUM(l.DEBIT - l.CREDIT), 0)
                         FROM wst_djn_fin_voucher_line l JOIN wst_djn_fin_voucher h ON h.VOUCHER_ID = l.VOUCHER_ID
                         WHERE l.ACCOUNT_ID = :acc AND h.VOUCHER_DATE < :dfrom{open_div}""", open_params)
         opening = cur.fetchone()[0]
@@ -923,7 +923,7 @@ def fetch_reconciliation_data(user):
     _guard(user)
     missed = fetch_missed_events(user)
     with _connect(user.username) as conn, conn.cursor() as cur:
-        cur.execute("""SELECT NVL(SUM(l.CREDIT - l.DEBIT), 0) FROM wst_djn_fin_voucher_line l
+        cur.execute("""SELECT COALESCE(SUM(l.CREDIT - l.DEBIT), 0) FROM wst_djn_fin_voucher_line l
                        JOIN wst_djn_fin_account a ON a.ACCOUNT_ID = l.ACCOUNT_ID AND a.SYSTEM_KEY = 'CUSTOMER_ADVANCE'""")
         control_advance = cur.fetchone()[0]
         cur.execute("""SELECT l.PARTY_ID, v.VENDOR_NAME AS PARTY_NAME, SUM(l.CREDIT - l.DEBIT) AS AMOUNT
@@ -940,10 +940,10 @@ def fetch_reconciliation_data(user):
                        JOIN wst_djn_fin_account a ON a.ACCOUNT_ID = l.ACCOUNT_ID AND a.SYSTEM_KEY = 'CUSTOMER_ADVANCE'
                        WHERE l.PARTY_ID IS NULL""")
         unattributed = cur.fetchone()[0]
-        cur.execute("""SELECT NVL(SUM(l.DEBIT - l.CREDIT), 0) FROM wst_djn_fin_voucher_line l
+        cur.execute("""SELECT COALESCE(SUM(l.DEBIT - l.CREDIT), 0) FROM wst_djn_fin_voucher_line l
                        JOIN wst_djn_fin_account a ON a.ACCOUNT_ID = l.ACCOUNT_ID AND a.SYSTEM_KEY = 'RECEIVABLE'""")
         control_receivable = cur.fetchone()[0]
-        cur.execute("""SELECT NVL(SUM(AMOUNT - SETTLED), 0) FROM wst_djn_fin_receivable WHERE STATUS <> 'REVERSED'""")
+        cur.execute("""SELECT COALESCE(SUM(AMOUNT - SETTLED), 0) FROM wst_djn_fin_receivable WHERE STATUS <> 'REVERSED'""")
         open_receivables = cur.fetchone()[0]
         cur.execute("""SELECT h.VOUCHER_NO, SUM(l.DEBIT) AS DEBIT, SUM(l.CREDIT) AS CREDIT
                        FROM wst_djn_fin_voucher h JOIN wst_djn_fin_voucher_line l ON l.VOUCHER_ID = h.VOUCHER_ID
@@ -952,9 +952,9 @@ def fetch_reconciliation_data(user):
         unbalanced = _dicts(cur)
         cur.execute("""SELECT * FROM (
                          SELECT a.ADVANCE_ID, v.VENDOR_NAME AS PARTY_NAME, a.AMOUNT - a.REMAINING AS USED,
-                                NVL((SELECT SUM(k.AMOUNT) FROM wst_djn_fin_allocation k
+                                COALESCE((SELECT SUM(k.AMOUNT) FROM wst_djn_fin_allocation k
                                      WHERE k.ADVANCE_ID = a.ADVANCE_ID AND k.STATUS = 'ACTIVE'), 0)
-                              + NVL((SELECT SUM(u.AMOUNT) FROM wst_djn_fin_advance_use u
+                              + COALESCE((SELECT SUM(u.AMOUNT) FROM wst_djn_fin_advance_use u
                                      WHERE u.ADVANCE_ID = a.ADVANCE_ID AND u.STATUS = 'ACTIVE'), 0) AS RECORDED
                          FROM wst_djn_fin_advance a LEFT JOIN wst_djn_vendors v ON v.VENDOR_ID = a.PARTY_ID
                          WHERE a.STATUS = 'ACTIVE')

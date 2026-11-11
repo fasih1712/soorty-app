@@ -154,7 +154,7 @@ def _process_cancelled(gp_id, actor):
                         vids = P.reverse_dispatch(cur, actor, gp_id, f'Gate Pass {gp_id} cancelled')
                         status, message = L.ST_POSTED, 'Sale reversed and advance restored.'
                         cur.execute("""UPDATE wst_djn_fin_event_log SET MESSAGE = 'Reversed: Gate Pass cancelled',
-                                       UPDATED_AT = SYSTIMESTAMP WHERE EVENT_TYPE = :1 AND SOURCE_ID = :2""",
+                                       UPDATED_AT = LOCALTIMESTAMP WHERE EVENT_TYPE = :1 AND SOURCE_ID = :2""",
                                     [L.EVENT_GP_POSTED, gp_id])
                     else:
                         vids = []
@@ -162,7 +162,7 @@ def _process_cancelled(gp_id, actor):
                         if orig and orig['STATUS'] == L.ST_FAILED:
                             cur.execute("""UPDATE wst_djn_fin_event_log SET STATUS = 'SKIPPED',
                                            MESSAGE = 'Gate Pass cancelled before it was posted to finance',
-                                           UPDATED_AT = SYSTIMESTAMP WHERE EVENT_TYPE = :1 AND SOURCE_ID = :2""",
+                                           UPDATED_AT = LOCALTIMESTAMP WHERE EVENT_TYPE = :1 AND SOURCE_ID = :2""",
                                         [L.EVENT_GP_POSTED, gp_id])
                     P.write_event(cur, L.EVENT_GP_CANCELLED, gp_id, division, gp_date, status, message, vids, actor)
                     conn.commit()

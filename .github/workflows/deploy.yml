@@ -44,13 +44,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Copy compose file to server
+      - name: Copy compose file + DB init scripts to server
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: docker-compose.prod.yml
+          source: "docker-compose.prod.yml,postgres/01_schema.sql,postgres/02_seed.sql"
           target: ${{ env.APP_DIR }}
 
       - name: Pull & restart
@@ -61,6 +61,12 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             set -e
+            # t3.micro has 1 GB RAM: make sure a 2 GB swap file exists (one-time, idempotent)
+            if ! sudo swapon --show | grep -q '/swapfile'; then
+              sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+              sudo mkswap /swapfile && sudo swapon /swapfile
+              grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+            fi
             cd ${{ env.APP_DIR }}
             if [ ! -f .env ]; then
               echo "ERROR: ${{ env.APP_DIR }}/.env missing on server. Create it from .env.example first."
@@ -70,6 +76,6 @@ jobs:
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
             docker image prune -f
-            sleep 15
+            sleep 25
             docker compose -f docker-compose.prod.yml ps
-            docker logs --tail 30 soorty-app
+            docker logs --tail 40 soorty-app

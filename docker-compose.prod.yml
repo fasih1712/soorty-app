@@ -1,23 +1,80 @@
-# Lives on the EC2 server at /opt/soorty/docker-compose.prod.yml (next to .env).
-# The GitHub Actions workflow copies this file there and runs it.
+# Lives on the EC2 server at /opt/soorty/docker-compose.prod.yml, next to
+# .env and the postgres/ folder. The GitHub Actions workflow copies all three.
+#
+# Two containers, sized for a t3.micro (1 GB RAM + swap):
+#   soorty-db  : PostgreSQL 16 (data in volume soorty_pgdata)
+#   soorty-app : Django app (gunicorn), talks to soorty-db on the internal network
 services:
+  soorty-db:
+    image: postgres:16-alpine
+    container_name: soorty-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-soorty}
+      POSTGRES_USER: ${DB_USER:-soorty}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      TZ: Asia/Karachi
+      PGTZ: Asia/Karachi
+    command:
+      - postgres
+      - -c
+      - shared_buffers=96MB
+      - -c
+      - effective_cache_size=256MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - max_connections=40
+      - -c
+      - timezone=Asia/Karachi
+    volumes:
+      - soorty_pgdata:/var/lib/postgresql/data
+      # Runs ONLY on the first start (empty volume): creates tables + seed data.
+      - ./postgres/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./postgres/02_seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+    # Not published to the internet. For pgAdmin/DBeaver use an SSH tunnel to 127.0.0.1:5432:
+    ports:
+      - "127.0.0.1:5432:5432"
+    mem_limit: 320m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-soorty} -d ${DB_NAME:-soorty}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks: [soorty-net]
+
   soorty-app:
     image: ghcr.io/fasih1712/soorty-app:latest
     container_name: soorty-app
     restart: unless-stopped
     env_file: .env
+    environment:
+      DB_HOST: soorty-db
+      DB_PORT: "5432"
+    depends_on:
+      soorty-db:
+        condition: service_healthy
     ports:
       - "${APP_PORT:-8090}:8000"
     volumes:
       - soorty_media:/app/media   # uploaded CNIC files etc. survive redeploys
       - soorty_logs:/app/logs
+    mem_limit: 420m
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/accounts/login/',timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 40s
+    networks: [soorty-net]
 
 volumes:
+  soorty_pgdata:
   soorty_media:
   soorty_logs:
+
+networks:
+  soorty-net:

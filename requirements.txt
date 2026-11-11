@@ -2,9 +2,10 @@ Django==5.1
 django-environ==0.13.0
 django-extensions==4.1
 djangorestframework==3.17.1
-oracledb==2.4.1
+psycopg[binary]==3.2.3
 whitenoise==6.12.0
 reportlab==4.5.1
+openpyxl==3.1.5
 pillow==12.2.0
 python-dateutil==2.9.0.post0
 sqlparse==0.5.5

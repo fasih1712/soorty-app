@@ -1,13 +1,8 @@
-import oracledb
+from core import db
 from django.conf import settings
 
 def get_connection():
-    db = settings.DATABASES['default']
-    return oracledb.connect(
-        user=db['USER'],
-        password=db['PASSWORD'],
-        dsn=f"{db['HOST']}:{db['PORT']}/{db['NAME']}"
-    )
+    return db.connect()
 
 
 def fetch_sales_summary():
@@ -17,7 +12,7 @@ def fetch_sales_summary():
             ROUND(SUM(NET_AMOUNT), 0) AS total_amount,
             COUNT(DISTINCT CUSTOMER_NAME) AS total_customers
         FROM apxprod.APX_EBS_ORDER_SALES_VW
-        WHERE ORDERED_DATE >= ADD_MONTHS(SYSDATE, -1)
+        WHERE ORDERED_DATE >= ADD_MONTHS(LOCALTIMESTAMP(0), -1)
     """
     with get_connection() as conn:
         with conn.cursor() as cursor:
@@ -96,7 +91,7 @@ def fetch_emp_by_id(empno):
 def insert_emp(ename, job, mgr, hiredate, sal, comm, deptno):
     sql = """
         INSERT INTO apxprod.EMP (EMPNO, ENAME, JOB, MGR, HIREDATE, SAL, COMM, DEPTNO)
-        VALUES (emp_seq.NEXTVAL, :1, :2, :3, TO_DATE(:4, 'YYYY-MM-DD'), :5, :6, :7)
+        VALUES (nextval('apxprod.emp_seq'), :1, :2, :3, TO_DATE(:4, 'YYYY-MM-DD'), :5, :6, :7)
     """
     with get_connection() as conn:
         with conn.cursor() as cursor:

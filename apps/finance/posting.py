@@ -98,7 +98,7 @@ def _period_open(cur, division, vdate):
 
 # ------------------------------------------------------------- numbering
 def next_voucher_no(cur, type_code, division, vdate):
-    import oracledb
+    from core import db
     cur.execute("SELECT PREFIX FROM wst_djn_fin_voucher_type WHERE TYPE_CODE = :1 AND IS_ACTIVE = 1", [type_code])
     row = cur.fetchone()
     if not row:
@@ -118,7 +118,7 @@ def next_voucher_no(cur, type_code, division, vdate):
             cur.execute("""INSERT INTO wst_djn_fin_sequence (TYPE_CODE, DIVISION, SEQ_YEAR, LAST_NO)
                            VALUES (:1, :2, :3, 1)""", [type_code, division, fy])
             return L.format_voucher_no(prefix, division, fy, 1)
-        except oracledb.DatabaseError as exc:
+        except db.DatabaseError as exc:
             if getattr(exc.args[0], 'code', None) != 1:
                 raise
             # someone else created the counter a moment ago: read it again
@@ -129,21 +129,20 @@ def next_voucher_no(cur, type_code, division, vdate):
 def insert_voucher(cur, actor, type_code, division, vdate, party_id, narration,
                    source_type, source_id, lines, reverses_voucher_id=None):
     """Writes header + lines. Lines must balance. Returns voucher_id."""
-    import oracledb
+    from core import db
     amount = L.assert_balanced(lines)
     _period_open(cur, division, vdate)
     vno = next_voucher_no(cur, type_code, division, vdate)
-    vid = cur.var(oracledb.NUMBER)
     cur.execute("""INSERT INTO wst_djn_fin_voucher
                      (voucher_no, type_code, division, voucher_date, party_id, narration,
                       source_type, source_id, amount, status, reverses_voucher_id, created_by)
                    VALUES (:no, :tc, :dv, TO_DATE(:vd,'YYYY-MM-DD'), :pty, :nar, :st, :sid, :amt, 'POSTED', :rev, :actor)
-                   RETURNING voucher_id INTO :vid""",
+                   RETURNING voucher_id""",
                 {'no': vno, 'tc': type_code, 'dv': division, 'vd': L.as_date(vdate).isoformat(),
                  'pty': party_id, 'nar': (narration or '')[:300], 'st': source_type,
                  'sid': (str(source_id)[:40] if source_id is not None else None),
-                 'amt': amount, 'rev': reverses_voucher_id, 'actor': actor, 'vid': vid})
-    voucher_id = int(vid.getvalue()[0])
+                 'amt': amount, 'rev': reverses_voucher_id, 'actor': actor})
+    voucher_id = int(cur.fetchone()[0])
     for i, ln in enumerate(lines, start=1):
         cur.execute("""INSERT INTO wst_djn_fin_voucher_line (voucher_id, line_no, account_id, party_id, debit, credit)
                        VALUES (:1, :2, :3, :4, :5, :6)""",
@@ -155,7 +154,7 @@ def insert_voucher(cur, actor, type_code, division, vdate, party_id, narration,
 
 def reverse_voucher(cur, actor, voucher_id, reason, rev_date=None):
     """Posts the mirror-image voucher and flips the original to REVERSED."""
-    import oracledb
+    from core import db
     cur.execute("""SELECT VOUCHER_ID, DIVISION, PARTY_ID, SOURCE_TYPE, SOURCE_ID, STATUS, VOUCHER_NO
                    FROM wst_djn_fin_voucher WHERE VOUCHER_ID = :1 FOR UPDATE""", [voucher_id])
     rows = _dicts(cur)
@@ -189,15 +188,14 @@ def advance_available(cur, party_id):
 
 
 def _insert_advance(cur, actor, party_id, division, adv_date, kind, mode, reference, amount, voucher_id):
-    import oracledb
-    aid = cur.var(oracledb.NUMBER)
+    from core import db
     cur.execute("""INSERT INTO wst_djn_fin_advance
                      (party_id, division, advance_date, kind, pay_mode, reference, amount, remaining, voucher_id, created_by)
                    VALUES (:p, :dv, TO_DATE(:d,'YYYY-MM-DD'), :k, :m, :ref, :amt, :amt, :v, :actor)
-                   RETURNING advance_id INTO :aid""",
+                   RETURNING advance_id""",
                 {'p': party_id, 'dv': division, 'd': L.as_date(adv_date).isoformat(), 'k': kind, 'm': mode,
-                 'ref': (reference or '')[:100] or None, 'amt': amount, 'v': voucher_id, 'actor': actor, 'aid': aid})
-    return int(aid.getvalue()[0])
+                 'ref': (reference or '')[:100] or None, 'amt': amount, 'v': voucher_id, 'actor': actor})
+    return int(cur.fetchone()[0])
 
 
 def _party_exists(cur, party_id):
@@ -250,7 +248,7 @@ def post_dispatch_for_customer(cur, actor, gp_id, division, gp_date, party_id, a
     """One customer's share of a Gate Pass: sale voucher, receivable, knock-off
     against advance (oldest first), application voucher, allocations.
     Raises InsufficientAdvance if the advance cannot cover it in full."""
-    import oracledb
+    from core import db
     amount = L.positive_money(amount)
     sale_dr, sale_cr = rule_accounts(cur, 'SALE_POSTED')
     app_dr, app_cr = rule_accounts(cur, 'ADVANCE_APPLIED')
@@ -260,14 +258,13 @@ def post_dispatch_for_customer(cur, actor, gp_id, division, gp_date, party_id, a
 
     sv = insert_voucher(cur, actor, 'SV', division, gp_date, party_id, f'Sale on Gate Pass {gp_id}',
                         'GATEPASS', gp_id, L.two_line(sale_dr, sale_cr, amount, party_id))
-    rid = cur.var(oracledb.NUMBER)
     cur.execute("""INSERT INTO wst_djn_fin_receivable
                      (party_id, division, source_type, source_id, doc_date, amount, settled, status, voucher_id, created_by)
                    VALUES (:p, :dv, 'GATEPASS', :sid, TO_DATE(:d,'YYYY-MM-DD'), :amt, 0, 'OPEN', :v, :actor)
-                   RETURNING receivable_id INTO :rid""",
+                   RETURNING receivable_id""",
                 {'p': party_id, 'dv': division, 'sid': gp_id, 'd': L.as_date(gp_date).isoformat(),
-                 'amt': amount, 'v': sv, 'actor': actor, 'rid': rid})
-    receivable_id = int(rid.getvalue()[0])
+                 'amt': amount, 'v': sv, 'actor': actor})
+    receivable_id = int(cur.fetchone()[0])
 
     av = insert_voucher(cur, actor, 'AV', division, gp_date, party_id, f'Advance applied to Gate Pass {gp_id}',
                         'GATEPASS', gp_id, L.two_line(app_dr, app_cr, amount, party_id))
@@ -315,13 +312,13 @@ def event_row(cur, event_type, source_id, for_update=False):
 
 def write_event(cur, event_type, source_id, division, event_date, status, message, voucher_ids, actor):
     """Upsert one event row (no commit)."""
-    import oracledb
+    from core import db
     msg = (message or '')[:500] or None
     vids = ','.join(str(v) for v in (voucher_ids or []))[:200] or None
     d = L.as_date(event_date).isoformat() if event_date else None
     cur.execute("""UPDATE wst_djn_fin_event_log
                    SET STATUS = :st, MESSAGE = :msg, VOUCHER_IDS = :vids, ATTEMPTS = ATTEMPTS + 1,
-                       UPDATED_AT = SYSTIMESTAMP, ACTOR = :actor
+                       UPDATED_AT = LOCALTIMESTAMP, ACTOR = :actor
                    WHERE EVENT_TYPE = :et AND SOURCE_ID = :sid""",
                 {'st': status, 'msg': msg, 'vids': vids, 'actor': actor, 'et': event_type, 'sid': source_id})
     if cur.rowcount:
@@ -332,11 +329,11 @@ def write_event(cur, event_type, source_id, division, event_date, status, messag
                        VALUES (:et, :sid, :dv, TO_DATE(:d,'YYYY-MM-DD'), :st, 1, :msg, :vids, :actor)""",
                     {'et': event_type, 'sid': source_id, 'dv': division, 'd': d, 'st': status,
                      'msg': msg, 'vids': vids, 'actor': actor})
-    except oracledb.DatabaseError as exc:
+    except db.DatabaseError as exc:
         if getattr(exc.args[0], 'code', None) != 1:
             raise
         cur.execute("""UPDATE wst_djn_fin_event_log SET STATUS = :st, MESSAGE = :msg, VOUCHER_IDS = :vids,
-                       ATTEMPTS = ATTEMPTS + 1, UPDATED_AT = SYSTIMESTAMP, ACTOR = :actor
+                       ATTEMPTS = ATTEMPTS + 1, UPDATED_AT = LOCALTIMESTAMP, ACTOR = :actor
                        WHERE EVENT_TYPE = :et AND SOURCE_ID = :sid""",
                     {'st': status, 'msg': msg, 'vids': vids, 'actor': actor, 'et': event_type, 'sid': source_id})
 
@@ -390,17 +387,16 @@ def _adj_date(cur, value):
 
 def _insert_adjustment(cur, actor, adj_type, division, adj_date, party_id, to_party_id, receivable_id,
                        source_ref, pay_mode, reference, amount, reason):
-    import oracledb
-    aid = cur.var(oracledb.NUMBER)
+    from core import db
     cur.execute("""INSERT INTO wst_djn_fin_adjustment
                      (adj_type, division, adj_date, party_id, to_party_id, receivable_id, source_ref,
                       pay_mode, reference, amount, reason, status, created_by)
                    VALUES (:t, :dv, TO_DATE(:d,'YYYY-MM-DD'), :p, :p2, :r, :sref, :pm, :ref, :amt, :why, 'ACTIVE', :actor)
-                   RETURNING adjustment_id INTO :aid""",
+                   RETURNING adjustment_id""",
                 {'t': adj_type, 'dv': division, 'd': L.as_date(adj_date).isoformat(), 'p': party_id, 'p2': to_party_id,
                  'r': receivable_id, 'sref': (str(source_ref)[:40] if source_ref else None), 'pm': pay_mode,
-                 'ref': (reference or '')[:100] or None, 'amt': amount, 'why': reason, 'actor': actor, 'aid': aid})
-    adj_id = int(aid.getvalue()[0])
+                 'ref': (reference or '')[:100] or None, 'amt': amount, 'why': reason, 'actor': actor})
+    adj_id = int(cur.fetchone()[0])
     audit.record_changes(cur, actor, 'FIN_ADJUSTMENT', adj_id, 'CREATE',
                          new=f'{adj_type} {amount} party={party_id} to={to_party_id} rcv={receivable_id} reason={reason}')
     return adj_id
@@ -453,8 +449,8 @@ def _lock_receivable(cur, receivable_id):
 
 
 def _note_totals(cur, receivable_id):
-    cur.execute("""SELECT NVL(SUM(CASE WHEN ADJ_TYPE = 'CREDIT_NOTE' THEN AMOUNT END), 0),
-                          NVL(SUM(CASE WHEN ADJ_TYPE = 'DEBIT_NOTE'  THEN AMOUNT END), 0)
+    cur.execute("""SELECT COALESCE(SUM(CASE WHEN ADJ_TYPE = 'CREDIT_NOTE' THEN AMOUNT END), 0),
+                          COALESCE(SUM(CASE WHEN ADJ_TYPE = 'DEBIT_NOTE'  THEN AMOUNT END), 0)
                    FROM wst_djn_fin_adjustment WHERE RECEIVABLE_ID = :1 AND STATUS = 'ACTIVE'""", [int(receivable_id)])
     credits, debits = cur.fetchone()
     return credits, debits
@@ -572,7 +568,7 @@ def reverse_adjustment(cur, actor, adjustment_id, reason):
     for (vid,) in cur.fetchall():
         reverse_voucher(cur, actor, vid, why)
     cur.execute("""UPDATE wst_djn_fin_adjustment SET STATUS = 'REVERSED', REVERSED_BY = :actor,
-                   REVERSED_AT = SYSTIMESTAMP, REVERSAL_REASON = :why WHERE ADJUSTMENT_ID = :id""",
+                   REVERSED_AT = LOCALTIMESTAMP, REVERSAL_REASON = :why WHERE ADJUSTMENT_ID = :id""",
                 {'actor': actor, 'why': why, 'id': int(adjustment_id)})
     audit.record_changes(cur, actor, 'FIN_ADJUSTMENT', adjustment_id, 'UPDATE',
                          old={'status': 'ACTIVE'}, new={'status': 'REVERSED', 'reason': why})

@@ -1,20 +1,8 @@
-import oracledb
+from core import db
 import environ
 import re
 from pathlib import Path
 from datetime import date
-
-_BASE_DIR = Path(__file__).resolve().parent.parent.parent
-_env = environ.Env()
-environ.Env.read_env(_BASE_DIR / '.env')
-
-ORACLE_USER = _env('DB_USER')
-ORACLE_PASSWORD = _env('DB_PASSWORD')
-ORACLE_DSN = oracledb.makedsn(
-    _env('DB_HOST'),
-    _env('DB_PORT'),
-    service_name=_env('DB_SERVICE_NAME')
-)
 
 def to_proper_case(value):
     """Convert text to Proper Case (Title Case), safe for None/empty values."""
@@ -27,16 +15,10 @@ def to_proper_case(value):
 
 
 def get_connection(username=None):
-    conn = oracledb.connect(
-        user=ORACLE_USER,
-        password=ORACLE_PASSWORD,
-        dsn=ORACLE_DSN
-    )
-    identifier = username if username else 'DIRECT_DB_EDIT'
-    cursor = conn.cursor()
-    cursor.callproc("DBMS_SESSION.SET_IDENTIFIER", [identifier])
-    cursor.close()
-    return conn
+    """PostgreSQL connection (see core/db.py). `username` is stored as the
+    session's app.client_identifier, which the audit triggers stamp into
+    CREATED_BY / LAST_UPDATED_BY (was DBMS_SESSION.SET_IDENTIFIER)."""
+    return db.connect(username if username else 'DIRECT_DB_EDIT')
 
 
 # ─── CATEGORIES ───────────────────────────────────────────
@@ -126,7 +108,7 @@ def fetch_all_departments(search=None):
                 return [dict(zip(cols, row)) for row in cur.fetchall()]
     try:
         return _run(True)
-    except oracledb.DatabaseError as e:
+    except db.DatabaseError as e:
         if 'ORA-00904' not in str(e):
             raise
         _warn_short_desc_missing('fetch_all_departments')
@@ -141,7 +123,7 @@ def fetch_department_by_id(dept_id):
         with conn.cursor() as cur:
             try:
                 cur.execute("SELECT DEPT_ID, DEPT_NAME, SHORT_DESCRIPTION, LOCATION, SUPERVISOR_ID FROM wst_djn_departments WHERE DEPT_ID=:1", [int(dept_id)])
-            except oracledb.DatabaseError as e:
+            except db.DatabaseError as e:
                 if 'ORA-00904' not in str(e):
                     raise
                 _warn_short_desc_missing('fetch_department_by_id')
@@ -160,7 +142,7 @@ def insert_department(name, location, supervisor_id, username=None, short_descri
             try:
                 cur.execute("""INSERT INTO wst_djn_departments (DEPT_NAME, SHORT_DESCRIPTION, LOCATION, SUPERVISOR_ID)
                                VALUES (:1, :2, :3, :4)""", [name, short_description, location, supervisor_id])
-            except oracledb.DatabaseError as e:
+            except db.DatabaseError as e:
                 if 'ORA-00904' not in str(e):
                     raise
                 _warn_short_desc_missing('insert_department')
@@ -176,7 +158,7 @@ def update_department(dept_id, name, location, supervisor_id, username=None, sho
                 cur.execute("""UPDATE wst_djn_departments
                                SET DEPT_NAME=:1, SHORT_DESCRIPTION=:2, LOCATION=:3, SUPERVISOR_ID=:4
                                WHERE DEPT_ID=:5""", [name, short_description, location, supervisor_id, int(dept_id)])
-            except oracledb.DatabaseError as e:
+            except db.DatabaseError as e:
                 if 'ORA-00904' not in str(e):
                     raise
                 _warn_short_desc_missing('update_department')
@@ -232,16 +214,16 @@ def insert_vendor(name, cnic, contact, phone, whatsapp, email, address, is_activ
     cnic_attachment_path are unaffected -- it's optional and trailing."""
     with get_connection(username) as conn:
         with conn.cursor() as cur:
-            new_id = cur.var(int)
             cur.execute("""INSERT INTO wst_djn_vendors 
                 (VENDOR_NAME, CONTACT_PERSON, PHONE, WHATSAPP_NO, EMAIL, ADDRESS, CNIC, CNIC_ATTACHMENT_PATH, IS_ACTIVE)
                 VALUES (:1,:2,:3,:4,:5,:6,:7,:8,:9)
-                RETURNING VENDOR_ID INTO :10""",
+                RETURNING VENDOR_ID""",
                 [to_proper_case(name), to_proper_case(contact), phone, whatsapp,
                  email.strip().lower() if email else email, to_proper_case(address), cnic,
-                 cnic_attachment_path, 1 if is_active else 0, new_id])
+                 cnic_attachment_path, 1 if is_active else 0])
+            new_id = cur.fetchone()[0]
             conn.commit()
-            return int(new_id.getvalue()[0])
+            return int(new_id)
 
 
 def update_vendor(vendor_id, name, cnic, contact, phone, whatsapp, email, address, is_active,
@@ -394,11 +376,11 @@ def fetch_all_stock_list(division=None):
         with conn.cursor() as cur:
             base_sql = """SELECT m.LIST_ID, i.ITEM_NAME,
                 TO_CHAR(m.MONTH_YEAR,'Mon-YYYY') AS MONTH_YEAR,
-                m.CLOSING_QTY, m.CONDITION, m.DISPATCHED, NVL(m.DIVISION,'08') AS DIVISION
+                m.CLOSING_QTY, m.CONDITION, m.DISPATCHED, COALESCE(m.DIVISION,'08') AS DIVISION
                 FROM wst_djn_monthly_stock_list m
                 LEFT JOIN wst_djn_items i ON m.ITEM_ID=i.ITEM_ID"""
             if division:
-                cur.execute(base_sql + " WHERE NVL(m.DIVISION,'08')=:1 ORDER BY m.LIST_ID DESC", [str(division)])
+                cur.execute(base_sql + " WHERE COALESCE(m.DIVISION,'08')=:1 ORDER BY m.LIST_ID DESC", [str(division)])
             else:
                 cur.execute(base_sql + " ORDER BY m.LIST_ID DESC")
             cols = [c[0] for c in cur.description]
@@ -417,16 +399,16 @@ def fetch_stock_list_summary(division=None):
         with conn.cursor() as cur:
             base_sql = """SELECT i.ITEM_ID, i.ITEM_NAME,
                     TO_CHAR(m.MONTH_YEAR,'Mon-YYYY') AS MONTH_YEAR,
-                    NVL(m.DIVISION,'08') AS DIVISION,
+                    COALESCE(m.DIVISION,'08') AS DIVISION,
                     SUM(m.CLOSING_QTY) AS TOTAL_QTY,
                     COUNT(*) AS ENTRY_COUNT,
-                    SUM(NVL(m.DISPATCHED,0)) AS DISPATCHED_COUNT
+                    SUM(COALESCE(m.DISPATCHED,0)) AS DISPATCHED_COUNT
                 FROM wst_djn_monthly_stock_list m
                 LEFT JOIN wst_djn_items i ON m.ITEM_ID=i.ITEM_ID"""
-            group_by = " GROUP BY i.ITEM_ID, i.ITEM_NAME, m.MONTH_YEAR, NVL(m.DIVISION,'08')"
+            group_by = " GROUP BY i.ITEM_ID, i.ITEM_NAME, m.MONTH_YEAR, COALESCE(m.DIVISION,'08')"
             order_by = " ORDER BY m.MONTH_YEAR DESC, i.ITEM_NAME"
             if division:
-                cur.execute(base_sql + " WHERE NVL(m.DIVISION,'08')=:1" + group_by + order_by, [str(division)])
+                cur.execute(base_sql + " WHERE COALESCE(m.DIVISION,'08')=:1" + group_by + order_by, [str(division)])
             else:
                 cur.execute(base_sql + group_by + order_by)
             cols = [c[0] for c in cur.description]
@@ -446,10 +428,10 @@ def fetch_stock_list_by_id(list_id, division=None):
     with get_connection() as conn:
         with conn.cursor() as cur:
             base = """SELECT LIST_ID, ITEM_ID, TO_CHAR(MONTH_YEAR,'YYYY-MM-DD') AS MONTH_YEAR,
-                CLOSING_QTY, CONDITION, DISPATCHED, NVL(DIVISION,'08') AS DIVISION
+                CLOSING_QTY, CONDITION, DISPATCHED, COALESCE(DIVISION,'08') AS DIVISION
                 FROM wst_djn_monthly_stock_list WHERE LIST_ID=:1"""
             if division:
-                cur.execute(base + " AND NVL(DIVISION,'08')=:2", [int(list_id), str(division)])
+                cur.execute(base + " AND COALESCE(DIVISION,'08')=:2", [int(list_id), str(division)])
             else:
                 cur.execute(base, [int(list_id)])
             cols = [c[0] for c in cur.description]
@@ -475,7 +457,7 @@ def update_stock_list(list_id, item_id, month_year, closing_qty, condition, disp
             if division:
                 cur.execute("""UPDATE wst_djn_monthly_stock_list SET ITEM_ID=:1,
                     MONTH_YEAR=TO_DATE(:2,'YYYY-MM-DD'), CLOSING_QTY=:3,
-                    CONDITION=:4, DISPATCHED=:5 WHERE LIST_ID=:6 AND NVL(DIVISION,'08')=:7""",
+                    CONDITION=:4, DISPATCHED=:5 WHERE LIST_ID=:6 AND COALESCE(DIVISION,'08')=:7""",
                     [int(item_id), str(month_year), float(closing_qty), to_proper_case(condition),
                      1 if dispatched else 0, int(list_id), str(division)])
             else:
@@ -490,7 +472,7 @@ def delete_stock_list(list_id, division=None):
     with get_connection() as conn:
         with conn.cursor() as cur:
             if division:
-                cur.execute("DELETE FROM wst_djn_monthly_stock_list WHERE LIST_ID=:1 AND NVL(DIVISION,'08')=:2",
+                cur.execute("DELETE FROM wst_djn_monthly_stock_list WHERE LIST_ID=:1 AND COALESCE(DIVISION,'08')=:2",
                             [int(list_id), str(division)])
             else:
                 cur.execute("DELETE FROM wst_djn_monthly_stock_list WHERE LIST_ID=:1", [int(list_id)])
@@ -518,16 +500,16 @@ def upsert_monthly_stock_list_from_receiving(item_id, division, receive_date, qt
             with conn.cursor() as cur:
                 cur.execute("""MERGE INTO wst_djn_monthly_stock_list m
                     USING (SELECT :1 AS ITEM_ID, :2 AS DIVISION,
-                                  TRUNC(TO_DATE(:3,'YYYY-MM-DD'),'MM') AS MONTH_YEAR FROM DUAL) s
-                    ON (m.ITEM_ID = s.ITEM_ID AND NVL(m.DIVISION,'08') = s.DIVISION
+                                  TRUNC(TO_DATE(:3,'YYYY-MM-DD'),'MM') AS MONTH_YEAR) s
+                    ON (m.ITEM_ID = s.ITEM_ID AND COALESCE(m.DIVISION,'08') = s.DIVISION
                         AND m.MONTH_YEAR = s.MONTH_YEAR)
-                    WHEN MATCHED THEN UPDATE SET m.CLOSING_QTY = NVL(m.CLOSING_QTY,0) + :4
+                    WHEN MATCHED THEN UPDATE SET CLOSING_QTY = COALESCE(m.CLOSING_QTY,0) + :4
                     WHEN NOT MATCHED THEN INSERT (ITEM_ID, DIVISION, MONTH_YEAR, CLOSING_QTY, DISPATCHED)
                         VALUES (:5, :6, TRUNC(TO_DATE(:7,'YYYY-MM-DD'),'MM'), :8, 0)""",
                     [int(item_id), str(division or '08'), str(receive_date), float(qty_received),
                      int(item_id), str(division or '08'), str(receive_date), float(qty_received)])
                 conn.commit()
-    except oracledb.DatabaseError as e:
+    except db.DatabaseError as e:
         print(f"WARNING: Monthly Stock List auto-rolling upsert failed (item {item_id}, div {division}): {e}")
 
 
@@ -539,11 +521,11 @@ def fetch_all_ledger(division=None):
         with conn.cursor() as cur:
             base_sql = """SELECT l.LEDGER_ID, i.ITEM_NAME,
                 TO_CHAR(l.TXN_DATE,'DD-Mon-YYYY') AS TXN_DATE,
-                l.TXN_TYPE, l.QTY_IN, l.QTY_OUT, l.BALANCE, NVL(l.DIVISION,'08') AS DIVISION
+                l.TXN_TYPE, l.QTY_IN, l.QTY_OUT, l.BALANCE, COALESCE(l.DIVISION,'08') AS DIVISION
                 FROM wst_djn_stock_ledger l
                 LEFT JOIN wst_djn_items i ON l.ITEM_ID=i.ITEM_ID"""
             if division:
-                cur.execute(base_sql + " WHERE NVL(l.DIVISION,'08')=:1 ORDER BY l.TXN_DATE DESC, l.LEDGER_ID DESC", [str(division)])
+                cur.execute(base_sql + " WHERE COALESCE(l.DIVISION,'08')=:1 ORDER BY l.TXN_DATE DESC, l.LEDGER_ID DESC", [str(division)])
             else:
                 cur.execute(base_sql + " ORDER BY l.TXN_DATE DESC, l.LEDGER_ID DESC")
             cols = [c[0] for c in cur.description]
@@ -557,8 +539,8 @@ def fetch_ledger_by_id(ledger_id, division=None):
         with conn.cursor() as cur:
             if division:
                 cur.execute("""SELECT LEDGER_ID, ITEM_ID, TO_CHAR(TXN_DATE,'YYYY-MM-DD') AS TXN_DATE,
-                    TXN_TYPE, QTY_IN, QTY_OUT, BALANCE, REF_ID, NVL(DIVISION,'08') AS DIVISION
-                    FROM wst_djn_stock_ledger WHERE LEDGER_ID=:1 AND NVL(DIVISION,'08')=:2""",
+                    TXN_TYPE, QTY_IN, QTY_OUT, BALANCE, REF_ID, COALESCE(DIVISION,'08') AS DIVISION
+                    FROM wst_djn_stock_ledger WHERE LEDGER_ID=:1 AND COALESCE(DIVISION,'08')=:2""",
                     [int(ledger_id), str(division)])
             else:
                 cur.execute("""SELECT LEDGER_ID, ITEM_ID, TO_CHAR(TXN_DATE,'YYYY-MM-DD') AS TXN_DATE,
@@ -586,15 +568,15 @@ def insert_ledger(item_id, txn_date, txn_type, qty_in, qty_out, balance, ref_id,
             try:
                 cur.execute("""INSERT INTO wst_djn_stock_ledger
                     (ITEM_ID, TXN_DATE, TXN_TYPE, QTY_IN, QTY_OUT, BALANCE, REF_ID, DIVISION,
-                     TRANSACTION_TYPE, SOURCE_REF, SOURCE_TABLE, POSTED_BY)
+                     TRANSACTION_TYPE, SOURCE_REF, SOURCE_TABLE, SOURCE_ID, POSTED_BY)
                     VALUES (:1, TO_DATE(:2,'YYYY-MM-DD'), :3, :4, :5, :6, :7, :8,
-                            :9, :10, :11, :12)""",
+                            :9, :10, :11, :12, :13)""",
                     [int(item_id), str(txn_date), txn_type,
                      float(qty_in or 0), float(qty_out or 0), float(balance or 0),
                      int(ref_id) if ref_id else None, str(division or '08'),
                      txn_type, (f'{source_table}#{ref_id}' if source_table else None),
-                     source_table, username])
-            except oracledb.DatabaseError:
+                     source_table, int(source_id) if source_id else None, username])
+            except db.DatabaseError:
                 # Richer metadata columns not on this schema yet -- fall back
                 # to the core columns this always worked with.
                 cur.execute("""INSERT INTO wst_djn_stock_ledger
@@ -615,7 +597,7 @@ def update_ledger(ledger_id, item_id, txn_date, txn_type, qty_in, qty_out, balan
                 cur.execute("""UPDATE wst_djn_stock_ledger SET ITEM_ID=:1,
                     TXN_DATE=TO_DATE(:2,'YYYY-MM-DD'), TXN_TYPE=:3,
                     QTY_IN=:4, QTY_OUT=:5, BALANCE=:6, REF_ID=:7
-                    WHERE LEDGER_ID=:8 AND NVL(DIVISION,'08')=:9""",
+                    WHERE LEDGER_ID=:8 AND COALESCE(DIVISION,'08')=:9""",
                     [int(item_id), str(txn_date), txn_type,
                      float(qty_in or 0), float(qty_out or 0), float(balance or 0),
                      int(ref_id) if ref_id else None, int(ledger_id), str(division)])
@@ -678,7 +660,7 @@ def post_adjustment(item_id, txn_date, qty_in, qty_out, ref_id, division, userna
                                 'ADJUST', 'MANUAL_ADJUST', 'MANUAL_ADJUST', :7)""",
                         [int(item_id), str(txn_date), qi, qo,
                          int(ref_id) if ref_id else None, division, username])
-                except oracledb.DatabaseError as e:
+                except db.DatabaseError as e:
                     # Only fall back when the richer columns are missing; a
                     # real failure (e.g. non-negative check) must surface.
                     if 'ORA-00904' not in str(e):
@@ -704,7 +686,7 @@ def update_adjustment(ledger_id, item_id, txn_date, qty_in, qty_out, ref_id, div
         with conn.cursor() as cur:
             try:
                 cur.execute("""SELECT ITEM_ID, TXN_TYPE FROM wst_djn_stock_ledger
-                               WHERE LEDGER_ID=:1 AND NVL(DIVISION,'08')=:2""",
+                               WHERE LEDGER_ID=:1 AND COALESCE(DIVISION,'08')=:2""",
                             [int(ledger_id), division])
                 old = cur.fetchone()
                 if not old:
@@ -715,7 +697,7 @@ def update_adjustment(ledger_id, item_id, txn_date, qty_in, qty_out, ref_id, div
                 old_item = int(old[0])
                 cur.execute("""UPDATE wst_djn_stock_ledger SET ITEM_ID=:1,
                         TXN_DATE=TO_DATE(:2,'YYYY-MM-DD'), QTY_IN=:3, QTY_OUT=:4, REF_ID=:5
-                        WHERE LEDGER_ID=:6 AND NVL(DIVISION,'08')=:7""",
+                        WHERE LEDGER_ID=:6 AND COALESCE(DIVISION,'08')=:7""",
                         [int(item_id), str(txn_date), qi, qo,
                          int(ref_id) if ref_id else None, int(ledger_id), division])
                 if old_item != int(item_id):
@@ -735,7 +717,7 @@ def delete_adjustment(ledger_id, division, username=None):
             try:
                 cur.execute("""SELECT ITEM_ID, TXN_TYPE, TO_CHAR(TXN_DATE,'YYYY-MM-DD')
                                FROM wst_djn_stock_ledger
-                               WHERE LEDGER_ID=:1 AND NVL(DIVISION,'08')=:2""",
+                               WHERE LEDGER_ID=:1 AND COALESCE(DIVISION,'08')=:2""",
                             [int(ledger_id), division])
                 old = cur.fetchone()
                 if not old:
@@ -743,7 +725,7 @@ def delete_adjustment(ledger_id, division, username=None):
                 if (old[1] or '').upper() != 'ADJUST':
                     raise ValueError('Only manual Adjust entries can be deleted here. '
                                      'Receiving and Gate Pass movements are reversed from their own screens.')
-                cur.execute("DELETE FROM wst_djn_stock_ledger WHERE LEDGER_ID=:1 AND NVL(DIVISION,'08')=:2",
+                cur.execute("DELETE FROM wst_djn_stock_ledger WHERE LEDGER_ID=:1 AND COALESCE(DIVISION,'08')=:2",
                             [int(ledger_id), division])
                 _recalc_item_balance(cur, old[0], division, old[2], 'ADJUST', 0, 0)
                 conn.commit()
@@ -756,7 +738,7 @@ def delete_ledger(ledger_id, division=None):
     with get_connection() as conn:
         with conn.cursor() as cur:
             if division:
-                cur.execute("DELETE FROM wst_djn_stock_ledger WHERE LEDGER_ID=:1 AND NVL(DIVISION,'08')=:2",
+                cur.execute("DELETE FROM wst_djn_stock_ledger WHERE LEDGER_ID=:1 AND COALESCE(DIVISION,'08')=:2",
                             [int(ledger_id), str(division)])
             else:
                 cur.execute("DELETE FROM wst_djn_stock_ledger WHERE LEDGER_ID=:1", [int(ledger_id)])
@@ -875,7 +857,7 @@ def fetch_all_quotation_headers(division=None, month=None):
     with get_connection() as conn:
         with conn.cursor() as cur:
             base_sql = """SELECT h.QUOTE_DOC_ID, h.DIVISION, h.VENDOR_ID, v.VENDOR_NAME, v.CNIC_ATTACHMENT_PATH,
-                    NVL(h.STATUS,'Open') AS STATUS,
+                    COALESCE(h.STATUS,'Open') AS STATUS,
                     TO_CHAR(h.TARGET_MONTH,'Mon-YYYY') AS TARGET_MONTH_DISPLAY,
                     h.REFERENCE_NO, TO_CHAR(h.RECEIVE_DATE,'DD-Mon-YYYY') AS RECEIVE_DATE,
                     TO_CHAR(h.VALID_UNTIL,'DD-Mon-YYYY') AS VALID_UNTIL,
@@ -898,7 +880,7 @@ def fetch_quotation_header_by_id(doc_id, division=None):
     None if the header belongs to a different division (IDOR protection)."""
     with get_connection() as conn:
         with conn.cursor() as cur:
-            base = """SELECT h.QUOTE_DOC_ID, h.DIVISION, h.VENDOR_ID, v.VENDOR_NAME, NVL(h.STATUS,'Open') AS STATUS,
+            base = """SELECT h.QUOTE_DOC_ID, h.DIVISION, h.VENDOR_ID, v.VENDOR_NAME, COALESCE(h.STATUS,'Open') AS STATUS,
                     TO_CHAR(h.TARGET_MONTH,'YYYY-MM-DD') AS TARGET_MONTH,
                     TO_CHAR(h.TARGET_MONTH,'Month YYYY') AS TARGET_MONTH_DISPLAY,
                     h.REFERENCE_NO,
@@ -927,7 +909,7 @@ def fetch_quotation_lines(doc_id, division=None, target_month=None):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""SELECT l.LINE_ID, l.LINE_NO, l.ITEM_ID, i.ITEM_CODE, i.ITEM_NAME,
-                    l.UOM, l.OFFERED_QTY, l.CURRENT_OFFERED_PRICE, NVL(l.STATUS,'Open') AS STATUS
+                    l.UOM, l.OFFERED_QTY, l.CURRENT_OFFERED_PRICE, COALESCE(l.STATUS,'Open') AS STATUS
                 FROM wst_djn_quotation_line l LEFT JOIN wst_djn_items i ON l.ITEM_ID=i.ITEM_ID
                 WHERE l.QUOTE_DOC_ID = :1 ORDER BY l.LINE_NO""", [doc_id])
             cols = [c[0] for c in cur.description]
@@ -947,12 +929,12 @@ def insert_quotation_header(division, target_month, vendor_id, reference_no, rec
                     (QUOTE_DOC_ID, DIVISION, TARGET_MONTH, VENDOR_ID, REFERENCE_NO,
                      RECEIVE_DATE, VALID_UNTIL, REMARKS, CREATED_BY, CREATED_DATE)
                     VALUES (:1, :2, TRUNC(TO_DATE(:3,'YYYY-MM-DD'),'MM'), :4, :5,
-                            TO_DATE(:6,'YYYY-MM-DD'), TO_DATE(:7,'YYYY-MM-DD'), :8, :9, SYSDATE)""",
+                            TO_DATE(:6,'YYYY-MM-DD'), TO_DATE(:7,'YYYY-MM-DD'), :8, :9, LOCALTIMESTAMP(0))""",
                     [doc_id, str(division), str(target_month), int(vendor_id), reference_no,
                      str(receive_date), str(valid_until), to_proper_case(remarks), username])
                 conn.commit()
                 return doc_id
-            except oracledb.DatabaseError as e:
+            except db.DatabaseError as e:
                 if 'UQ_WST_DJN_QUOTATION_HEADER' in str(e).upper():
                     # Translated, not just re-raised, so the raw Oracle
                     # constraint name never has to reach the screen --
@@ -967,7 +949,7 @@ def insert_quotation_header(division, target_month, vendor_id, reference_no, rec
 
 
 def insert_quotation_line(doc_id, item_id, item_code, uom, offered_qty, current_offered_price):
-    """Auto-sequences line_no = NVL(MAX(line_no),0) + 10 for this document.
+    """Auto-sequences line_no = COALESCE(MAX(line_no),0) + 10 for this document.
     A UNIQUE constraint on (quote_doc_id, item_id) prevents the same item
     being quoted twice within one header -- callers should catch that as a
     friendly 'already quoted' message rather than a raw DB error. Refuses
@@ -975,11 +957,11 @@ def insert_quotation_line(doc_id, item_id, item_code, uom, offered_qty, current_
     raising, so callers can show a friendly message."""
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT NVL(STATUS,'Open') FROM wst_djn_quotation_header WHERE QUOTE_DOC_ID=:1", [doc_id])
+            cur.execute("SELECT COALESCE(STATUS,'Open') FROM wst_djn_quotation_header WHERE QUOTE_DOC_ID=:1", [doc_id])
             row = cur.fetchone()
             if not row or row[0] == 'Locked':
                 return None
-            cur.execute("SELECT NVL(MAX(LINE_NO),0)+10 FROM wst_djn_quotation_line WHERE QUOTE_DOC_ID=:1", [doc_id])
+            cur.execute("SELECT COALESCE(MAX(LINE_NO),0)+10 FROM wst_djn_quotation_line WHERE QUOTE_DOC_ID=:1", [doc_id])
             line_no = cur.fetchone()[0]
             cur.execute("""INSERT INTO wst_djn_quotation_line
                 (QUOTE_DOC_ID, LINE_NO, ITEM_ID, ITEM_CODE, UOM, OFFERED_QTY, CURRENT_OFFERED_PRICE)
@@ -1001,7 +983,7 @@ def update_quotation_line_price(line_id, doc_id, current_offered_price):
     locked, so the view can show a friendly message."""
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT NVL(STATUS,'Open') FROM wst_djn_quotation_line WHERE LINE_ID=:1 AND QUOTE_DOC_ID=:2", [int(line_id), doc_id])
+            cur.execute("SELECT COALESCE(STATUS,'Open') FROM wst_djn_quotation_line WHERE LINE_ID=:1 AND QUOTE_DOC_ID=:2", [int(line_id), doc_id])
             row = cur.fetchone()
             if not row or row[0] == 'Locked':
                 return False
@@ -1018,7 +1000,7 @@ def delete_quotation_line(line_id, doc_id):
     locked (some items routed to Sales, others still open)."""
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT NVL(STATUS,'Open') FROM wst_djn_quotation_line WHERE LINE_ID=:1 AND QUOTE_DOC_ID=:2", [int(line_id), doc_id])
+            cur.execute("SELECT COALESCE(STATUS,'Open') FROM wst_djn_quotation_line WHERE LINE_ID=:1 AND QUOTE_DOC_ID=:2", [int(line_id), doc_id])
             row = cur.fetchone()
             if not row or row[0] == 'Locked':
                 return False
@@ -1038,7 +1020,7 @@ def delete_quotation_header(doc_id, division=None):
                             [doc_id, str(division)])
                 if not cur.fetchone():
                     return False
-            cur.execute("SELECT NVL(STATUS,'Open') FROM wst_djn_quotation_header WHERE QUOTE_DOC_ID=:1", [doc_id])
+            cur.execute("SELECT COALESCE(STATUS,'Open') FROM wst_djn_quotation_header WHERE QUOTE_DOC_ID=:1", [doc_id])
             row = cur.fetchone()
             if not row or row[0] == 'Locked':
                 return False
@@ -1065,7 +1047,7 @@ def fetch_quotation_comparison_items(division, target_month):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""SELECT ql.ITEM_ID, i.ITEM_CODE, i.ITEM_NAME, ql.UOM, ql.OFFERED_QTY,
-                    v.VENDOR_ID, v.VENDOR_NAME, ql.CURRENT_OFFERED_PRICE, NVL(ql.STATUS,'Open') AS LINE_STATUS
+                    v.VENDOR_ID, v.VENDOR_NAME, ql.CURRENT_OFFERED_PRICE, COALESCE(ql.STATUS,'Open') AS LINE_STATUS
                 FROM wst_djn_quotation_line ql
                 JOIN wst_djn_quotation_header qh ON ql.QUOTE_DOC_ID = qh.QUOTE_DOC_ID
                 JOIN wst_djn_vendors v ON qh.VENDOR_ID = v.VENDOR_ID
@@ -1207,8 +1189,8 @@ def fetch_yearly_high(item_id, year):
                 JOIN wst_djn_quotation_header qh ON ql.QUOTE_DOC_ID = qh.QUOTE_DOC_ID
                 JOIN wst_djn_vendors v ON qh.VENDOR_ID = v.VENDOR_ID
                 WHERE ql.ITEM_ID=:1
-                  AND qh.TARGET_MONTH >= ADD_MONTHS(TRUNC(SYSDATE,'MM'), -11)
-                  AND qh.TARGET_MONTH <= TRUNC(SYSDATE,'MM')
+                  AND qh.TARGET_MONTH >= ADD_MONTHS(TRUNC(LOCALTIMESTAMP(0),'MM'), -11)
+                  AND qh.TARGET_MONTH <= TRUNC(LOCALTIMESTAMP(0),'MM')
                 ORDER BY ql.CURRENT_OFFERED_PRICE DESC FETCH FIRST 1 ROW ONLY""",
                 [int(item_id)])
             row = cur.fetchone()
@@ -1295,13 +1277,13 @@ def save_comparison_selection(item_id, division, target_month, vendor_id, price,
             existing = cur.fetchone()
             if existing:
                 cur.execute("""UPDATE wst_djn_quote_comparison_sel
-                    SET VENDOR_ID=:1, SELECTED_PRICE=:2, UPDATED_BY=:3, UPDATED_DATE=SYSDATE
+                    SET VENDOR_ID=:1, SELECTED_PRICE=:2, UPDATED_BY=:3, UPDATED_DATE=LOCALTIMESTAMP(0)
                     WHERE SELECTION_ID=:4""",
                     [int(vendor_id), float(price), username, existing[0]])
             else:
                 cur.execute("""INSERT INTO wst_djn_quote_comparison_sel
                     (ITEM_ID, DIVISION, TARGET_MONTH, VENDOR_ID, SELECTED_PRICE, CREATED_BY, CREATED_DATE)
-                    VALUES (:1, :2, TRUNC(TO_DATE(:3,'YYYY-MM-DD'),'MM'), :4, :5, :6, SYSDATE)""",
+                    VALUES (:1, :2, TRUNC(TO_DATE(:3,'YYYY-MM-DD'),'MM'), :4, :5, :6, LOCALTIMESTAMP(0))""",
                     [int(item_id), str(division), str(target_month), int(vendor_id), float(price), username])
             conn.commit()
 
@@ -1313,7 +1295,7 @@ def is_period_locked(division, target_month):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""SELECT COUNT(*) FROM wst_djn_quotation_header
-                WHERE DIVISION=:1 AND TARGET_MONTH=TRUNC(TO_DATE(:2,'YYYY-MM-DD'),'MM') AND NVL(STATUS,'Open')='Locked'""",
+                WHERE DIVISION=:1 AND TARGET_MONTH=TRUNC(TO_DATE(:2,'YYYY-MM-DD'),'MM') AND COALESCE(STATUS,'Open')='Locked'""",
                 [str(division), str(target_month)])
             return cur.fetchone()[0] > 0
 
@@ -1340,7 +1322,7 @@ def _release_quotation_lock(cur, item_id, division, target_month):
         return  # this item was never actually locked via the Comparison flow -- nothing to release
 
     cur.execute("""UPDATE wst_djn_quotation_line ql
-        SET ql.STATUS='Open'
+        SET STATUS='Open'
         WHERE ql.ITEM_ID=:1
           AND ql.QUOTE_DOC_ID IN (
               SELECT qh.QUOTE_DOC_ID FROM wst_djn_quotation_header qh
@@ -1353,7 +1335,7 @@ def _release_quotation_lock(cur, item_id, division, target_month):
         [int(item_id), str(division), str(target_month)])
 
     for header_doc_id in affected_header_ids:
-        cur.execute("""SELECT COUNT(*), SUM(CASE WHEN NVL(STATUS,'Open')='Locked' THEN 1 ELSE 0 END)
+        cur.execute("""SELECT COUNT(*), SUM(CASE WHEN COALESCE(STATUS,'Open')='Locked' THEN 1 ELSE 0 END)
             FROM wst_djn_quotation_line WHERE QUOTE_DOC_ID=:1""", [header_doc_id])
         total, locked_count = cur.fetchone()
         new_status = 'Locked' if total and locked_count == total else 'Open'
@@ -1410,7 +1392,7 @@ def generate_sales_from_comparison(division, target_month, selections, username=
                         LEFT JOIN wst_djn_items i ON ql.ITEM_ID = i.ITEM_ID
                         WHERE ql.ITEM_ID=:1 AND qh.DIVISION=:2
                           AND qh.TARGET_MONTH=TRUNC(TO_DATE(:3,'YYYY-MM-DD'),'MM')
-                          AND NVL(ql.STATUS,'Open')='Locked'
+                          AND COALESCE(ql.STATUS,'Open')='Locked'
                         FETCH FIRST 1 ROW ONLY""",
                         [item_id, str(division), str(target_month)])
                     row = cur.fetchone()
@@ -1444,7 +1426,7 @@ def generate_sales_from_comparison(division, target_month, selections, username=
 
                     if existing:
                         doc_id = existing[0]
-                        cur.execute("SELECT NVL(MAX(LINE_NO),0) FROM wst_djn_sales_line WHERE DOC_ID=:1", [doc_id])
+                        cur.execute("SELECT COALESCE(MAX(LINE_NO),0) FROM wst_djn_sales_line WHERE DOC_ID=:1", [doc_id])
                         next_line_no = cur.fetchone()[0]
                     else:
                         doc_id = generate_doc_id(cur)
@@ -1456,7 +1438,7 @@ def generate_sales_from_comparison(division, target_month, selections, username=
                         # originating Comparison period.
                         cur.execute("""INSERT INTO wst_djn_sales_header
                             (DOC_ID, DIVISION, VENDOR_ID, DOC_DATE, SOURCE_TARGET_MONTH, INVOICE_NO, STATUS, TOTAL_AMOUNT, CREATED_BY, CREATED_DATE)
-                            VALUES (:1,:2,:3,TRUNC(SYSDATE),TRUNC(TO_DATE(:4,'YYYY-MM-DD'),'MM'),NULL,'DRAFT',0,:5,SYSDATE)""",
+                            VALUES (:1,:2,:3,TRUNC(LOCALTIMESTAMP(0)),TRUNC(TO_DATE(:4,'YYYY-MM-DD'),'MM'),NULL,'DRAFT',0,:5,LOCALTIMESTAMP(0))""",
                             [doc_id, str(division), vendor_id, str(target_month), username])
                         next_line_no = 0
 
@@ -1501,7 +1483,7 @@ def generate_sales_from_comparison(division, target_month, selections, username=
                         affected_header_ids.add(row[0])
 
                     cur.execute("""UPDATE wst_djn_quotation_line ql
-                        SET ql.STATUS='Locked'
+                        SET STATUS='Locked'
                         WHERE ql.ITEM_ID=:1
                           AND ql.QUOTE_DOC_ID IN (
                               SELECT qh.QUOTE_DOC_ID FROM wst_djn_quotation_header qh
@@ -1514,7 +1496,7 @@ def generate_sales_from_comparison(division, target_month, selections, username=
                 # otherwise Open, since it may still have other, untouched
                 # items belonging to that same vendor's quotation.
                 for header_doc_id in affected_header_ids:
-                    cur.execute("""SELECT COUNT(*), SUM(CASE WHEN NVL(STATUS,'Open')='Locked' THEN 1 ELSE 0 END)
+                    cur.execute("""SELECT COUNT(*), SUM(CASE WHEN COALESCE(STATUS,'Open')='Locked' THEN 1 ELSE 0 END)
                         FROM wst_djn_quotation_line WHERE QUOTE_DOC_ID=:1""", [header_doc_id])
                     total, locked_count = cur.fetchone()
                     new_status = 'Locked' if total and locked_count == total else 'Open'
@@ -1596,7 +1578,7 @@ def fetch_all_receiving(search=None, division=None, month=None, year=None,
 
     base_cols = """r.RECEIVE_ID, i.ITEM_NAME, i.UNIT AS UOM, d.DEPT_NAME,
                 TO_CHAR(r.RECEIVE_DATE,'DD-Mon-YYYY') AS RECEIVE_DATE,
-                r.QTY_RECEIVED, r.REMARKS, NVL(r.DIVISION,'08') AS DIVISION"""
+                r.QTY_RECEIVED, r.REMARKS, COALESCE(r.DIVISION,'08') AS DIVISION"""
     audit_cols = """,
                 r.CREATED_BY, TO_CHAR(r.CREATED_DATE,'DD-Mon-YYYY HH24:MI') AS CREATED_DATE,
                 r.LAST_UPDATED_BY, TO_CHAR(r.LAST_UPDATED_DATE,'DD-Mon-YYYY HH24:MI') AS LAST_UPDATED_DATE"""
@@ -1629,7 +1611,7 @@ def fetch_all_receiving(search=None, division=None, month=None, year=None,
         params['p_year'] = y
 
     if division:
-        conditions.append("NVL(r.DIVISION,'08') = :p_div")
+        conditions.append("COALESCE(r.DIVISION,'08') = :p_div")
         params['p_div'] = str(division)
     if search:
         conditions.append("""(UPPER(i.ITEM_NAME) LIKE UPPER(:p_s1)
@@ -1652,7 +1634,7 @@ def fetch_all_receiving(search=None, division=None, month=None, year=None,
         with conn.cursor() as cur:
             try:
                 cur.execute(f"SELECT {base_cols}{audit_cols}{join_sql}{where_sql}{order_sql}", params)
-            except oracledb.DatabaseError:
+            except db.DatabaseError:
                 # Audit columns not yet present on this table (DDL not applied). Degrade gracefully.
                 cur.execute(f"SELECT {base_cols}{join_sql}{where_sql}{order_sql}", params)
             cols = [c[0] for c in cur.description]
@@ -1667,8 +1649,8 @@ def fetch_receiving_by_id(receive_id, division=None):
             if division:
                 cur.execute("""SELECT RECEIVE_ID, ITEM_ID, DEPT_ID, RECEIVED_BY,
                     TO_CHAR(RECEIVE_DATE,'YYYY-MM-DD') AS RECEIVE_DATE,
-                    QTY_RECEIVED, REMARKS, NVL(DIVISION,'08') AS DIVISION
-                    FROM wst_djn_stock_receiving WHERE RECEIVE_ID=:1 AND NVL(DIVISION,'08')=:2""",
+                    QTY_RECEIVED, REMARKS, COALESCE(DIVISION,'08') AS DIVISION
+                    FROM wst_djn_stock_receiving WHERE RECEIVE_ID=:1 AND COALESCE(DIVISION,'08')=:2""",
                     [int(receive_id), str(division)])
             else:
                 cur.execute("""SELECT RECEIVE_ID, ITEM_ID, DEPT_ID, RECEIVED_BY,
@@ -1687,28 +1669,26 @@ def insert_receiving(item_id, dept_id, received_by, receive_date, qty_received, 
         with conn.cursor() as cur:
             # Try with DIVISION column first; fall back if it doesn't exist yet
             try:
-                rcv_id_var = cur.var(int)
                 cur.execute("""INSERT INTO wst_djn_stock_receiving
                     (ITEM_ID, DEPT_ID, RECEIVED_BY, RECEIVE_DATE, QTY_RECEIVED, REMARKS, DIVISION)
                     VALUES (:1,:2,:3,TO_DATE(:4,'YYYY-MM-DD'),:5,:6,:7)
-                    RETURNING RECEIVE_ID INTO :8""",
+                    RETURNING RECEIVE_ID""",
                     [int(item_id), int(dept_id) if dept_id else None,
                      int(received_by) if received_by else None,
                      str(receive_date), float(qty_received), to_proper_case(remarks),
-                     div, rcv_id_var])
-            except oracledb.DatabaseError:
+                     div])
+                rcv_id = cur.fetchone()[0]
+            except db.DatabaseError:
                 # DIVISION column may not exist yet — insert without it
-                rcv_id_var = cur.var(int)
                 cur.execute("""INSERT INTO wst_djn_stock_receiving
                     (ITEM_ID, DEPT_ID, RECEIVED_BY, RECEIVE_DATE, QTY_RECEIVED, REMARKS)
                     VALUES (:1,:2,:3,TO_DATE(:4,'YYYY-MM-DD'),:5,:6)
-                    RETURNING RECEIVE_ID INTO :7""",
+                    RETURNING RECEIVE_ID""",
                     [int(item_id), int(dept_id) if dept_id else None,
                      int(received_by) if received_by else None,
-                     str(receive_date), float(qty_received), to_proper_case(remarks),
-                     rcv_id_var])
+                     str(receive_date), float(qty_received), to_proper_case(remarks)])
+                rcv_id = cur.fetchone()[0]
             conn.commit()
-            rcv_id = rcv_id_var.getvalue()[0]
 
     # Auto-post IN to stock ledger (separate transaction — receiving is already saved)
     ledger_error = None
@@ -1753,11 +1733,11 @@ def update_receiving(receive_id, item_id, dept_id, received_by, receive_date, qt
             # log, to find the matching ledger row, and to know which
             # item+division combo(s) need recalculating afterward.
             if division:
-                cur.execute("""SELECT ITEM_ID, NVL(DIVISION,'08')
-                    FROM wst_djn_stock_receiving WHERE RECEIVE_ID=:1 AND NVL(DIVISION,'08')=:2""",
+                cur.execute("""SELECT ITEM_ID, COALESCE(DIVISION,'08')
+                    FROM wst_djn_stock_receiving WHERE RECEIVE_ID=:1 AND COALESCE(DIVISION,'08')=:2""",
                     [int(receive_id), str(division)])
             else:
-                cur.execute("""SELECT ITEM_ID, NVL(DIVISION,'08')
+                cur.execute("""SELECT ITEM_ID, COALESCE(DIVISION,'08')
                     FROM wst_djn_stock_receiving WHERE RECEIVE_ID=:1""", [int(receive_id)])
             old_row = cur.fetchone()
             if not old_row:
@@ -1772,8 +1752,8 @@ def update_receiving(receive_id, item_id, dept_id, received_by, receive_date, qt
             new_qty = float(qty_received)
 
             def _live_balance(itm, div):
-                cur.execute("""SELECT NVL(SUM(QTY_IN),0) - NVL(SUM(QTY_OUT),0)
-                    FROM wst_djn_stock_ledger WHERE ITEM_ID=:1 AND NVL(DIVISION,'08')=:2""",
+                cur.execute("""SELECT COALESCE(SUM(QTY_IN),0) - COALESCE(SUM(QTY_OUT),0)
+                    FROM wst_djn_stock_ledger WHERE ITEM_ID=:1 AND COALESCE(DIVISION,'08')=:2""",
                     [int(itm), str(div)])
                 r = cur.fetchone()
                 return float(r[0]) if r else 0.0
@@ -1804,7 +1784,7 @@ def update_receiving(receive_id, item_id, dept_id, received_by, receive_date, qt
             if division:
                 cur.execute("""UPDATE wst_djn_stock_receiving SET ITEM_ID=:1, DEPT_ID=:2,
                     RECEIVED_BY=:3, RECEIVE_DATE=TO_DATE(:4,'YYYY-MM-DD'),
-                    QTY_RECEIVED=:5, REMARKS=:6 WHERE RECEIVE_ID=:7 AND NVL(DIVISION,'08')=:8""",
+                    QTY_RECEIVED=:5, REMARKS=:6 WHERE RECEIVE_ID=:7 AND COALESCE(DIVISION,'08')=:8""",
                     [new_item_id, int(dept_id) if dept_id else None,
                      int(received_by) if received_by else None,
                      str(receive_date), new_qty, to_proper_case(remarks),
@@ -1822,7 +1802,7 @@ def update_receiving(receive_id, item_id, dept_id, received_by, receive_date, qt
             # one if the original RECEIVE post had silently failed, same
             # graceful-degradation insert_receiving() already relies on.
             cur.execute("""SELECT LEDGER_ID FROM wst_djn_stock_ledger
-                WHERE REF_ID=:1 AND TXN_TYPE='RECEIVE' AND NVL(DIVISION,'08')=:2""",
+                WHERE REF_ID=:1 AND TXN_TYPE='RECEIVE' AND COALESCE(DIVISION,'08')=:2""",
                 [int(receive_id), str(old_division)])
             ledger_row = cur.fetchone()
             if ledger_row:
@@ -1838,7 +1818,7 @@ def update_receiving(receive_id, item_id, dept_id, received_by, receive_date, qt
                         VALUES (:1, TO_DATE(:2,'YYYY-MM-DD'), 'RECEIVE', :3, 0, 0, :4, :5,
                                 'RECEIVE', 'wst_djn_stock_receiving', :6)""",
                         [new_item_id, str(receive_date), new_qty, int(receive_id), new_division, username])
-                except oracledb.DatabaseError:
+                except db.DatabaseError:
                     cur.execute("""INSERT INTO wst_djn_stock_ledger
                         (ITEM_ID, TXN_DATE, TXN_TYPE, QTY_IN, QTY_OUT, BALANCE, REF_ID, DIVISION)
                         VALUES (:1, TO_DATE(:2,'YYYY-MM-DD'), 'RECEIVE', :3, 0, 0, :4, :5)""",
@@ -1877,11 +1857,11 @@ def delete_receiving(receive_id, division=None, username=None):
     with get_connection(username) as conn:
         with conn.cursor() as cur:
             if division:
-                cur.execute("""SELECT ITEM_ID, QTY_RECEIVED, NVL(DIVISION,'08')
-                    FROM wst_djn_stock_receiving WHERE RECEIVE_ID=:1 AND NVL(DIVISION,'08')=:2""",
+                cur.execute("""SELECT ITEM_ID, QTY_RECEIVED, COALESCE(DIVISION,'08')
+                    FROM wst_djn_stock_receiving WHERE RECEIVE_ID=:1 AND COALESCE(DIVISION,'08')=:2""",
                     [int(receive_id), str(division)])
             else:
-                cur.execute("""SELECT ITEM_ID, QTY_RECEIVED, NVL(DIVISION,'08')
+                cur.execute("""SELECT ITEM_ID, QTY_RECEIVED, COALESCE(DIVISION,'08')
                     FROM wst_djn_stock_receiving WHERE RECEIVE_ID=:1""", [int(receive_id)])
             row = cur.fetchone()
             if not row:
@@ -1892,8 +1872,8 @@ def delete_receiving(receive_id, division=None, username=None):
             # Fail-closed: removing this quantity's contribution must not
             # drive the item's balance negative -- same reasoning as the
             # equivalent check in update_receiving().
-            cur.execute("""SELECT NVL(SUM(QTY_IN),0) - NVL(SUM(QTY_OUT),0)
-                FROM wst_djn_stock_ledger WHERE ITEM_ID=:1 AND NVL(DIVISION,'08')=:2""",
+            cur.execute("""SELECT COALESCE(SUM(QTY_IN),0) - COALESCE(SUM(QTY_OUT),0)
+                FROM wst_djn_stock_ledger WHERE ITEM_ID=:1 AND COALESCE(DIVISION,'08')=:2""",
                 [int(item_id), str(row_division)])
             r = cur.fetchone()
             current_balance = float(r[0]) if r else 0.0
@@ -1906,13 +1886,13 @@ def delete_receiving(receive_id, division=None, username=None):
                                 f'-- other transactions already depend on this quantity. Nothing was deleted.')
 
             if division:
-                cur.execute("DELETE FROM wst_djn_stock_receiving WHERE RECEIVE_ID=:1 AND NVL(DIVISION,'08')=:2",
+                cur.execute("DELETE FROM wst_djn_stock_receiving WHERE RECEIVE_ID=:1 AND COALESCE(DIVISION,'08')=:2",
                             [int(receive_id), str(division)])
             else:
                 cur.execute("DELETE FROM wst_djn_stock_receiving WHERE RECEIVE_ID=:1", [int(receive_id)])
 
             cur.execute("""DELETE FROM wst_djn_stock_ledger
-                WHERE REF_ID=:1 AND TXN_TYPE='RECEIVE' AND NVL(DIVISION,'08')=:2""",
+                WHERE REF_ID=:1 AND TXN_TYPE='RECEIVE' AND COALESCE(DIVISION,'08')=:2""",
                 [int(receive_id), str(row_division)])
 
             log_audit('STOCK_RECEIVING', receive_id, 'DELETE', username or 'SYSTEM',
@@ -1936,8 +1916,8 @@ def fetch_all_sales(search=None, division=None):
     """division is mandatory row-level security — always pass request.user.division."""
     base_cols = """s.SALE_ID, v.VENDOR_NAME, s.INVOICE_NO,
                 TO_CHAR(s.SALE_DATE,'DD-Mon-YYYY') AS SALE_DATE,
-                s.TOTAL_AMOUNT, s.STATUS, NVL(s.DIVISION,'08') AS DIVISION,
-                (SELECT LISTAGG(i.ITEM_NAME, ', ') WITHIN GROUP (ORDER BY i.ITEM_NAME)
+                s.TOTAL_AMOUNT, s.STATUS, COALESCE(s.DIVISION,'08') AS DIVISION,
+                (SELECT STRING_AGG(i.ITEM_NAME, ', ' ORDER BY i.ITEM_NAME)
                  FROM wst_djn_sale_items si
                  JOIN wst_djn_items i ON si.ITEM_ID = i.ITEM_ID
                  WHERE si.SALE_ID = s.SALE_ID) AS ITEM_NAMES"""
@@ -1951,7 +1931,7 @@ def fetch_all_sales(search=None, division=None):
     conditions = []
     params = {}
     if division:
-        conditions.append("NVL(s.DIVISION,'08') = :p_div")
+        conditions.append("COALESCE(s.DIVISION,'08') = :p_div")
         params['p_div'] = str(division)
     if search:
         conditions.append("""(UPPER(v.VENDOR_NAME) LIKE UPPER(:p_s1)
@@ -1965,15 +1945,15 @@ def fetch_all_sales(search=None, division=None):
         with conn.cursor() as cur:
             try:
                 cur.execute(f"SELECT {base_cols}{audit_cols}{join_sql}{where_sql}{order_sql}", params)
-            except oracledb.DatabaseError:
+            except db.DatabaseError:
                 try:
                     # Audit columns not yet present (DDL not applied) — try without them
                     cur.execute(f"SELECT {base_cols}{join_sql}{where_sql}{order_sql}", params)
-                except oracledb.DatabaseError:
+                except db.DatabaseError:
                     # wst_djn_sale_items may not exist on very old installs — final fallback
                     base_cols_no_items = """s.SALE_ID, v.VENDOR_NAME, s.INVOICE_NO,
                         TO_CHAR(s.SALE_DATE,'DD-Mon-YYYY') AS SALE_DATE,
-                        s.TOTAL_AMOUNT, s.STATUS, NVL(s.DIVISION,'08') AS DIVISION"""
+                        s.TOTAL_AMOUNT, s.STATUS, COALESCE(s.DIVISION,'08') AS DIVISION"""
                     cur.execute(f"SELECT {base_cols_no_items}{join_sql}{where_sql}{order_sql}", params)
             cols = [c[0] for c in cur.description]
             return [dict(zip(cols, row)) for row in cur.fetchall()]
@@ -1987,8 +1967,8 @@ def fetch_sale_by_id(sale_id, division=None):
             if division:
                 cur.execute("""SELECT SALE_ID, ASSIGN_ID, VENDOR_ID, INVOICE_NO,
                     TO_CHAR(SALE_DATE,'YYYY-MM-DD') AS SALE_DATE,
-                    TOTAL_AMOUNT, STATUS, NVL(DIVISION,'08') AS DIVISION
-                    FROM wst_djn_sales WHERE SALE_ID=:1 AND NVL(DIVISION,'08')=:2""",
+                    TOTAL_AMOUNT, STATUS, COALESCE(DIVISION,'08') AS DIVISION
+                    FROM wst_djn_sales WHERE SALE_ID=:1 AND COALESCE(DIVISION,'08')=:2""",
                     [int(sale_id), str(division)])
             else:
                 cur.execute("""SELECT SALE_ID, ASSIGN_ID, VENDOR_ID, INVOICE_NO,
@@ -2006,28 +1986,26 @@ def insert_sale(assign_id, vendor_id, item_id, qty_sold, invoice_no, sale_date, 
     with get_connection(username) as conn:
         with conn.cursor() as cur:
             try:
-                sale_id_var = cur.var(int)
                 cur.execute("""INSERT INTO wst_djn_sales
                     (ASSIGN_ID, VENDOR_ID, INVOICE_NO, SALE_DATE, TOTAL_AMOUNT, STATUS, CREATED_BY, DIVISION)
                     VALUES (:1,:2,:3,TO_DATE(:4,'YYYY-MM-DD'),:5,:6,:7,:8)
-                    RETURNING SALE_ID INTO :9""",
+                    RETURNING SALE_ID""",
                     [int(assign_id) if assign_id else None, int(vendor_id),
                      invoice_no, str(sale_date), float(total_amount), status,
                      int(created_by) if created_by else None,
-                     div, sale_id_var])
-            except oracledb.DatabaseError:
+                     div])
+                sale_id = cur.fetchone()[0]
+            except db.DatabaseError:
                 # DIVISION column may not exist yet — insert without it
-                sale_id_var = cur.var(int)
                 cur.execute("""INSERT INTO wst_djn_sales
                     (ASSIGN_ID, VENDOR_ID, INVOICE_NO, SALE_DATE, TOTAL_AMOUNT, STATUS, CREATED_BY)
                     VALUES (:1,:2,:3,TO_DATE(:4,'YYYY-MM-DD'),:5,:6,:7)
-                    RETURNING SALE_ID INTO :8""",
+                    RETURNING SALE_ID""",
                     [int(assign_id) if assign_id else None, int(vendor_id),
                      invoice_no, str(sale_date), float(total_amount), status,
-                     int(created_by) if created_by else None,
-                     sale_id_var])
+                     int(created_by) if created_by else None])
+                sale_id = cur.fetchone()[0]
             conn.commit()
-            sale_id = sale_id_var.getvalue()[0]
 
     # Record the line item (what was actually sold, how much, at what rate)
     qty = float(qty_sold or 0)
@@ -2063,7 +2041,7 @@ def update_sale(sale_id, assign_id, vendor_id, invoice_no, sale_date, total_amou
                 # ownership check upstream were ever bypassed.
                 cur.execute("""UPDATE wst_djn_sales SET ASSIGN_ID=:1, VENDOR_ID=:2,
                     INVOICE_NO=:3, SALE_DATE=TO_DATE(:4,'YYYY-MM-DD'),
-                    TOTAL_AMOUNT=:5, STATUS=:6 WHERE SALE_ID=:7 AND NVL(DIVISION,'08')=:8""",
+                    TOTAL_AMOUNT=:5, STATUS=:6 WHERE SALE_ID=:7 AND COALESCE(DIVISION,'08')=:8""",
                     [int(assign_id) if assign_id else None, int(vendor_id),
                      invoice_no, str(sale_date), float(total_amount), status,
                      int(sale_id), str(division)])
@@ -2079,7 +2057,7 @@ def delete_sale(sale_id, division=None, username=None):
     with get_connection(username) as conn:
         with conn.cursor() as cur:
             if division:
-                cur.execute("DELETE FROM wst_djn_sales WHERE SALE_ID=:1 AND NVL(DIVISION,'08')=:2",
+                cur.execute("DELETE FROM wst_djn_sales WHERE SALE_ID=:1 AND COALESCE(DIVISION,'08')=:2",
                             [int(sale_id), str(division)])
             else:
                 cur.execute("DELETE FROM wst_djn_sales WHERE SALE_ID=:1", [int(sale_id)])
@@ -2211,8 +2189,8 @@ def fetch_sales_lines(doc_id):
         with conn.cursor() as cur:
             cur.execute("""SELECT l.LINE_ID, l.LINE_NO, l.ITEM_ID, i.ITEM_CODE, i.ITEM_NAME, i.UNIT AS UOM,
                     l.QUANTITY, l.UNIT_PRICE, l.LINE_TOTAL,
-                    NVL(l.SHIPPED_QTY, 0) AS SHIPPED_QTY, NVL(l.LINE_STATUS, 'Entered') AS LINE_STATUS,
-                    l.QUANTITY - NVL(l.SHIPPED_QTY, 0) AS PENDING_QTY
+                    COALESCE(l.SHIPPED_QTY, 0) AS SHIPPED_QTY, COALESCE(l.LINE_STATUS, 'Entered') AS LINE_STATUS,
+                    l.QUANTITY - COALESCE(l.SHIPPED_QTY, 0) AS PENDING_QTY
                 FROM wst_djn_sales_line l LEFT JOIN wst_djn_items i ON l.ITEM_ID=i.ITEM_ID
                 WHERE l.DOC_ID = :1 ORDER BY l.LINE_NO""", [doc_id])
             cols = [c[0] for c in cur.description]
@@ -2221,7 +2199,7 @@ def fetch_sales_lines(doc_id):
 
 def _recalc_header_total(cur, doc_id):
     cur.execute("""UPDATE wst_djn_sales_header SET TOTAL_AMOUNT =
-        (SELECT NVL(SUM(LINE_TOTAL),0) FROM wst_djn_sales_line WHERE DOC_ID=:1)
+        (SELECT COALESCE(SUM(LINE_TOTAL),0) FROM wst_djn_sales_line WHERE DOC_ID=:1)
         WHERE DOC_ID=:2""", [doc_id, doc_id])
 
 
@@ -2233,18 +2211,18 @@ def insert_sales_header_draft(vendor_id, doc_date, invoice_no, division, usernam
             cur.execute("""INSERT INTO wst_djn_sales_header
                 (DOC_ID, DIVISION, VENDOR_ID, DOC_DATE, INVOICE_NO, STATUS,
                  TOTAL_AMOUNT, CREATED_BY, CREATED_DATE)
-                VALUES (:1,:2,:3,TO_DATE(:4,'YYYY-MM-DD'),:5,'DRAFT',0,:6,SYSDATE)""",
+                VALUES (:1,:2,:3,TO_DATE(:4,'YYYY-MM-DD'),:5,'DRAFT',0,:6,LOCALTIMESTAMP(0))""",
                 [doc_id, str(division or '08'), int(vendor_id), str(doc_date), invoice_no, username])
             conn.commit()
             return doc_id
 
 
 def insert_sales_line(doc_id, item_id, quantity, unit_price):
-    """Auto-sequences line_no = NVL(MAX(line_no),0) + 10 for this document,
+    """Auto-sequences line_no = COALESCE(MAX(line_no),0) + 10 for this document,
     then recalculates the header's TOTAL_AMOUNT from all its current lines."""
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT NVL(MAX(LINE_NO),0)+10 FROM wst_djn_sales_line WHERE DOC_ID=:1", [doc_id])
+            cur.execute("SELECT COALESCE(MAX(LINE_NO),0)+10 FROM wst_djn_sales_line WHERE DOC_ID=:1", [doc_id])
             line_no = cur.fetchone()[0]
             cur.execute("""INSERT INTO wst_djn_sales_line (DOC_ID, LINE_NO, ITEM_ID, QUANTITY, UNIT_PRICE)
                 VALUES (:1,:2,:3,:4,:5)""",
@@ -2277,7 +2255,7 @@ def update_sales_line(line_id, doc_id, quantity, unit_price):
     Returns (True, None) or (False, error_message)."""
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT NVL(LINE_STATUS,'Entered') FROM wst_djn_sales_line WHERE LINE_ID=:1 AND DOC_ID=:2",
+            cur.execute("SELECT COALESCE(LINE_STATUS,'Entered') FROM wst_djn_sales_line WHERE LINE_ID=:1 AND DOC_ID=:2",
                         [int(line_id), doc_id])
             row = cur.fetchone()
             if not row:
@@ -2312,7 +2290,7 @@ def delete_sales_line(line_id, doc_id):
     deleted, False if refused."""
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT NVL(LINE_STATUS,'Entered') FROM wst_djn_sales_line WHERE LINE_ID=:1 AND DOC_ID=:2",
+            cur.execute("SELECT COALESCE(LINE_STATUS,'Entered') FROM wst_djn_sales_line WHERE LINE_ID=:1 AND DOC_ID=:2",
                         [int(line_id), doc_id])
             row = cur.fetchone()
             if not row:
@@ -2342,13 +2320,13 @@ def update_sales_header_draft(doc_id, vendor_id, doc_date, invoice_no, division=
             if division:
                 cur.execute("""UPDATE wst_djn_sales_header SET
                     DOC_DATE=TO_DATE(:1,'YYYY-MM-DD'), INVOICE_NO=:2,
-                    LAST_UPDATED_BY=:3, LAST_UPDATED_DATE=SYSDATE
+                    LAST_UPDATED_BY=:3, LAST_UPDATED_DATE=LOCALTIMESTAMP(0)
                     WHERE DOC_ID=:4 AND DIVISION=:5 AND STATUS='DRAFT'""",
                     [str(doc_date), invoice_no, username, doc_id, str(division)])
             else:
                 cur.execute("""UPDATE wst_djn_sales_header SET
                     DOC_DATE=TO_DATE(:1,'YYYY-MM-DD'), INVOICE_NO=:2,
-                    LAST_UPDATED_BY=:3, LAST_UPDATED_DATE=SYSDATE
+                    LAST_UPDATED_BY=:3, LAST_UPDATED_DATE=LOCALTIMESTAMP(0)
                     WHERE DOC_ID=:4 AND STATUS='DRAFT'""",
                     [str(doc_date), invoice_no, username, doc_id])
             conn.commit()
@@ -2462,7 +2440,7 @@ def post_sales_document(doc_id, division, username=None):
                             VALUES (:1, :2, 'SALE', 0, :3, 0, NULL, :4, 'SALE', :5, 'wst_djn_sales_header', :6)""",
                             [int(item_id), doc_date, float(quantity), str(division),
                              f'{doc_id}#{line_no}', username])
-                    except oracledb.DatabaseError:
+                    except db.DatabaseError:
                         # One or more of the richer metadata columns (TRANSACTION_TYPE /
                         # SOURCE_REF / SOURCE_TABLE / POSTED_BY) don't exist on this schema
                         # yet -- fall back to the core columns that Receiving already relies
@@ -2475,9 +2453,9 @@ def post_sales_document(doc_id, division, username=None):
 
                 try:
                     cur.execute("""UPDATE wst_djn_sales_header
-                        SET STATUS='CLOSED', POSTED_BY=:1, POSTED_DATE=SYSDATE
+                        SET STATUS='CLOSED', POSTED_BY=:1, POSTED_DATE=LOCALTIMESTAMP(0)
                         WHERE DOC_ID=:2""", [username, doc_id])
-                except oracledb.DatabaseError:
+                except db.DatabaseError:
                     # POSTED_BY/POSTED_DATE not on this schema yet -- STATUS is the
                     # one column that matters for the app's own logic, so at minimum
                     # that must succeed.
@@ -2500,7 +2478,7 @@ def post_sales_document(doc_id, division, username=None):
                 ship_doc_id = generate_ship_doc_id(cur)
                 cur.execute("""INSERT INTO wst_djn_shipment_header
                     (SHIP_DOC_ID, SALES_DOC_ID, DIVISION, SHIP_DATE, STATUS, CREATED_BY, CREATED_DATE)
-                    VALUES (:1, :2, :3, SYSDATE, 'Shipped', :4, SYSDATE)""",
+                    VALUES (:1, :2, :3, LOCALTIMESTAMP(0), 'Shipped', :4, LOCALTIMESTAMP(0))""",
                     [ship_doc_id, doc_id, str(division), username])
                 for line_id, line_no, item_id, quantity in lines:
                     cur.execute("""INSERT INTO wst_djn_shipment_line
@@ -2578,7 +2556,7 @@ def cancel_sales_document(doc_id, division, username=None):
                                     'SALE_REVERSAL', :5, 'wst_djn_sales_header', :6)""",
                             [int(item_id), today, float(quantity), str(division),
                              f'{doc_id}#{line_no}-REV', username])
-                    except oracledb.DatabaseError:
+                    except db.DatabaseError:
                         # Same fallback as post_sales_document() -- richer metadata
                         # columns may not exist on this schema yet.
                         cur.execute("""INSERT INTO wst_djn_stock_ledger
@@ -2591,9 +2569,9 @@ def cancel_sales_document(doc_id, division, username=None):
 
                 try:
                     cur.execute("""UPDATE wst_djn_sales_header
-                        SET STATUS='CANCELLED', CANCELLED_BY=:1, CANCELLED_DATE=SYSDATE
+                        SET STATUS='CANCELLED', CANCELLED_BY=:1, CANCELLED_DATE=LOCALTIMESTAMP(0)
                         WHERE DOC_ID=:2""", [username, doc_id])
-                except oracledb.DatabaseError:
+                except db.DatabaseError:
                     cur.execute("UPDATE wst_djn_sales_header SET STATUS='CANCELLED' WHERE DOC_ID=:1", [doc_id])
 
                 if target_month is not None:
@@ -2603,9 +2581,9 @@ def cancel_sales_document(doc_id, division, username=None):
 
                 try:
                     cur.execute("""UPDATE wst_djn_shipment_header
-                        SET STATUS='Cancelled', CANCELLED_BY=:1, CANCELLED_DATE=SYSDATE
+                        SET STATUS='Cancelled', CANCELLED_BY=:1, CANCELLED_DATE=LOCALTIMESTAMP(0)
                         WHERE SALES_DOC_ID=:2 AND STATUS='Shipped'""", [username, doc_id])
-                except oracledb.DatabaseError:
+                except db.DatabaseError:
                     pass  # shipment table may not exist yet on an un-migrated schema
 
                 conn.commit()
@@ -2651,7 +2629,7 @@ def fetch_all_shipments(division=None, status=None, month=None):
                 cur.execute(base_sql + w + " ORDER BY sh.CREATED_DATE DESC, sh.SHIP_DOC_ID DESC", params)
                 cols = [c[0] for c in cur.description]
                 return [dict(zip(cols, row)) for row in cur.fetchall()]
-            except oracledb.DatabaseError:
+            except db.DatabaseError:
                 return []  # shipment table not migrated onto this schema yet
 
 
@@ -2672,7 +2650,7 @@ def fetch_shipment_by_sales_doc_id(doc_id):
                 if not row:
                     return None
                 return {'SHIP_DOC_ID': row[0], 'SHIP_DATE': row[1], 'STATUS': row[2]}
-            except oracledb.DatabaseError:
+            except db.DatabaseError:
                 return None  # shipment table not migrated onto this schema yet
 
 
@@ -2712,7 +2690,7 @@ def cancel_shipment(ship_doc_id, division, username=None):
                                     'SHIPMENT_REVERSAL', :5, 'wst_djn_shipment_header', :6)""",
                             [int(item_id), today, float(quantity), str(division),
                              f'{ship_doc_id}-REV', username])
-                    except oracledb.DatabaseError:
+                    except db.DatabaseError:
                         cur.execute("""INSERT INTO wst_djn_stock_ledger
                             (ITEM_ID, TXN_DATE, TXN_TYPE, QTY_IN, QTY_OUT, BALANCE, REF_ID, DIVISION)
                             VALUES (:1, TO_DATE(:2,'YYYY-MM-DD'), 'SHIPMENT_REVERSAL', :3, 0, 0, NULL, :4)""",
@@ -2723,7 +2701,7 @@ def cancel_shipment(ship_doc_id, division, username=None):
                             SET SHIPPED_QTY=0, LINE_STATUS='Entered' WHERE LINE_ID=:1""", [int(sales_line_id)])
 
                 cur.execute("""UPDATE wst_djn_shipment_header
-                    SET STATUS='Cancelled', CANCELLED_BY=:1, CANCELLED_DATE=SYSDATE
+                    SET STATUS='Cancelled', CANCELLED_BY=:1, CANCELLED_DATE=LOCALTIMESTAMP(0)
                     WHERE SHIP_DOC_ID=:2""", [username, ship_doc_id])
 
                 cur.execute("SELECT SOURCE_TARGET_MONTH FROM wst_djn_sales_header WHERE DOC_ID=:1", [sales_doc_id])
@@ -2734,7 +2712,7 @@ def cancel_shipment(ship_doc_id, division, username=None):
                     cur.execute("""UPDATE wst_djn_sales_header
                         SET STATUS='DRAFT', POSTED_BY=NULL, POSTED_DATE=NULL
                         WHERE DOC_ID=:1""", [sales_doc_id])
-                except oracledb.DatabaseError:
+                except db.DatabaseError:
                     cur.execute("UPDATE wst_djn_sales_header SET STATUS='DRAFT' WHERE DOC_ID=:1", [sales_doc_id])
 
                 if target_month_str:
@@ -2807,7 +2785,7 @@ def fetch_vendors_with_open_so(division, month):
                 WHERE sh.DIVISION=:1
                   AND TRUNC(sh.DOC_DATE,'MM') = TRUNC(TO_DATE(:2,'YYYY-MM-DD'),'MM')
                   AND sh.STATUS != 'CANCELLED'
-                  AND NVL(sl.LINE_STATUS,'Entered') IN ('Entered','Partial')
+                  AND COALESCE(sl.LINE_STATUS,'Entered') IN ('Entered','Partial')
                 ORDER BY v.VENDOR_NAME""",
                 [str(division), month_first])
             cols = [c[0] for c in cur.description]
@@ -2841,9 +2819,9 @@ def fetch_open_so_lines_for_vendor(vendor_id, division, month, exclude_so_line_i
                 params += [int(x) for x in exclude_so_line_ids]
             cur.execute(f"""SELECT sl.LINE_ID AS SO_LINE_ID, sl.LINE_NO AS SO_LINE_NO, sh.DOC_ID AS SO_DOC_ID,
                     sl.ITEM_ID, i.ITEM_NAME, i.UNIT AS UOM, i.ITEM_CODE, c.PREFIX,
-                    sl.QUANTITY AS SO_ORDER_QTY, NVL(sl.SHIPPED_QTY,0) AS SHIPPED_QTY,
-                    sl.QUANTITY - NVL(sl.SHIPPED_QTY,0) AS REMAINING_QTY,
-                    NVL(sl.LINE_STATUS,'Entered') AS LINE_STATUS
+                    sl.QUANTITY AS SO_ORDER_QTY, COALESCE(sl.SHIPPED_QTY,0) AS SHIPPED_QTY,
+                    sl.QUANTITY - COALESCE(sl.SHIPPED_QTY,0) AS REMAINING_QTY,
+                    COALESCE(sl.LINE_STATUS,'Entered') AS LINE_STATUS
                 FROM wst_djn_sales_header sh
                 JOIN wst_djn_sales_line sl ON sl.DOC_ID = sh.DOC_ID
                 LEFT JOIN wst_djn_items i ON i.ITEM_ID = sl.ITEM_ID
@@ -2851,7 +2829,7 @@ def fetch_open_so_lines_for_vendor(vendor_id, division, month, exclude_so_line_i
                 WHERE sh.DIVISION=:1 AND sh.VENDOR_ID=:2
                   AND TRUNC(sh.DOC_DATE,'MM') = TRUNC(TO_DATE(:3,'YYYY-MM-DD'),'MM')
                   AND sh.STATUS != 'CANCELLED'
-                  AND NVL(sl.LINE_STATUS,'Entered') IN ('Entered','Partial'){exclude_clause}
+                  AND COALESCE(sl.LINE_STATUS,'Entered') IN ('Entered','Partial'){exclude_clause}
                 ORDER BY sh.DOC_ID, sl.LINE_NO""",
                 params)
             cols = [c[0] for c in cur.description]
@@ -2889,7 +2867,7 @@ def _recalc_sales_header_status(cur, doc_id):
     row = cur.fetchone()
     if not row or row[0] == 'CANCELLED':
         return
-    cur.execute("SELECT QUANTITY, NVL(SHIPPED_QTY,0) FROM wst_djn_sales_line WHERE DOC_ID=:1", [doc_id])
+    cur.execute("SELECT QUANTITY, COALESCE(SHIPPED_QTY,0) FROM wst_djn_sales_line WHERE DOC_ID=:1", [doc_id])
     line_rows = cur.fetchall()
     if not line_rows:
         return
@@ -2984,7 +2962,7 @@ def save_gate_pass_draft(header, lines, gate_pass_id=None, username=None):
                         (GATE_PASS_ID, MODULE_TYPE, DIVISION, GATE_PASS_DATE, DOCUMENT_TYPE,
                          SENDER_ID, SHIP_TO, SENDER_DEPARTMENT_ID, VEHICLE_TYPE, VEHICLE_NO,
                          DRIVER_NAME, RECEIVER_NAME, REMARKS, STATUS, CREATED_BY, CREATED_DATE)
-                        VALUES (:1,:2,:3,TO_DATE(:4,'YYYY-MM-DD'),:5,:6,:7,:8,:9,:10,:11,:12,:13,'Draft',:14,SYSDATE)""",
+                        VALUES (:1,:2,:3,TO_DATE(:4,'YYYY-MM-DD'),:5,:6,:7,:8,:9,:10,:11,:12,:13,'Draft',:14,LOCALTIMESTAMP(0))""",
                         [gate_pass_id, module_type, str(division), gp_date, header.get('document_type') or 'Waste',
                          header.get('sender_id'), header.get('ship_to'), header.get('sender_department_id'),
                          header.get('vehicle_type'), header.get('vehicle_no'), header.get('driver_name'),
@@ -3109,7 +3087,7 @@ def post_gate_pass(header, lines, gate_pass_id=None, username=None):
                     for ln in lines:
                         if not ln.get('so_line_id'):
                             continue
-                        cur.execute("""SELECT sl.QUANTITY, NVL(sl.SHIPPED_QTY,0), sh.STATUS, sh.DOC_ID
+                        cur.execute("""SELECT sl.QUANTITY, COALESCE(sl.SHIPPED_QTY,0), sh.STATUS, sh.DOC_ID
                             FROM wst_djn_sales_line sl
                             JOIN wst_djn_sales_header sh ON sh.DOC_ID = sl.DOC_ID
                             WHERE sl.LINE_ID=:1""", [int(ln['so_line_id'])])
@@ -3158,7 +3136,7 @@ def post_gate_pass(header, lines, gate_pass_id=None, username=None):
                         (GATE_PASS_ID, MODULE_TYPE, DIVISION, GATE_PASS_DATE, DOCUMENT_TYPE,
                          SENDER_ID, SHIP_TO, SENDER_DEPARTMENT_ID, VEHICLE_TYPE, VEHICLE_NO,
                          DRIVER_NAME, RECEIVER_NAME, REMARKS, STATUS, CREATED_BY, CREATED_DATE)
-                        VALUES (:1,:2,:3,TO_DATE(:4,'YYYY-MM-DD'),:5,:6,:7,:8,:9,:10,:11,:12,:13,'Posted',:14,SYSDATE)""",
+                        VALUES (:1,:2,:3,TO_DATE(:4,'YYYY-MM-DD'),:5,:6,:7,:8,:9,:10,:11,:12,:13,'Posted',:14,LOCALTIMESTAMP(0))""",
                         [gate_pass_id, module_type, str(division), gp_date, header.get('document_type') or 'Waste',
                          header.get('sender_id'), header.get('ship_to'), header.get('sender_department_id'),
                          header.get('vehicle_type'), header.get('vehicle_no'), header.get('driver_name'),
@@ -3202,7 +3180,7 @@ def post_gate_pass(header, lines, gate_pass_id=None, username=None):
                              TRANSACTION_TYPE, SOURCE_REF, SOURCE_TABLE, POSTED_BY)
                             VALUES (:1, TO_DATE(:2,'YYYY-MM-DD'), :3, 0, :4, 0, NULL, :5, :6, :7, 'wst_djn_gatepass_header', :8)""",
                             [item_id, gp_date, txn_type, qty, str(division), txn_type, narration, username])
-                    except oracledb.DatabaseError:
+                    except db.DatabaseError:
                         cur.execute("""INSERT INTO wst_djn_stock_ledger
                             (ITEM_ID, TXN_DATE, TXN_TYPE, QTY_IN, QTY_OUT, BALANCE, REF_ID, DIVISION)
                             VALUES (:1, TO_DATE(:2,'YYYY-MM-DD'), :3, 0, :4, 0, NULL, :5)""",
@@ -3211,8 +3189,8 @@ def post_gate_pass(header, lines, gate_pass_id=None, username=None):
 
                     if so_line_id:
                         cur.execute("""UPDATE wst_djn_sales_line
-                            SET SHIPPED_QTY = NVL(SHIPPED_QTY,0) + :1,
-                                LINE_STATUS = CASE WHEN NVL(SHIPPED_QTY,0) + :2 >= QUANTITY THEN 'Closed' ELSE 'Partial' END
+                            SET SHIPPED_QTY = COALESCE(SHIPPED_QTY,0) + :1,
+                                LINE_STATUS = CASE WHEN COALESCE(SHIPPED_QTY,0) + :2 >= QUANTITY THEN 'Closed' ELSE 'Partial' END
                             WHERE LINE_ID=:3""", [qty, qty, int(so_line_id)])
                         touched_doc_ids.add(so_doc_id)
 
@@ -3276,7 +3254,7 @@ def archive_gate_pass(gate_pass_id, division, username=None):
                 cur.execute("SELECT STATUS, ARCHIVED_DATE FROM wst_djn_gatepass_header WHERE GATE_PASS_ID=:1 AND DIVISION=:2",
                             [gate_pass_id, str(division)])
                 row = cur.fetchone()
-            except oracledb.DatabaseError:
+            except db.DatabaseError:
                 return False, "This instance doesn't have the archiving column yet -- run the schema migration first."
             if not row:
                 return False, "Gate Pass not found, or it belongs to a different division."
@@ -3286,7 +3264,7 @@ def archive_gate_pass(gate_pass_id, division, username=None):
             if archived_date is not None:
                 return False, "This Gate Pass is already archived."
             cur.execute("""UPDATE wst_djn_gatepass_header
-                SET ARCHIVED_BY=:1, ARCHIVED_DATE=SYSDATE
+                SET ARCHIVED_BY=:1, ARCHIVED_DATE=LOCALTIMESTAMP(0)
                 WHERE GATE_PASS_ID=:2""", [username, gate_pass_id])
             conn.commit()
             return True, None
@@ -3330,14 +3308,14 @@ def fetch_all_gate_passes(division=None, status=None, month=None):
             base_sql = select_cols.format(manual_no_col='gp.MANUAL_GATE_PASS_NO,')
             try:
                 cur.execute(base_sql + w + order_sql, params)
-            except oracledb.DatabaseError:
+            except db.DatabaseError:
                 try:
                     cur.execute(base_sql + w_fallback + order_sql, params)
-                except oracledb.DatabaseError:
+                except db.DatabaseError:
                     base_sql = select_cols.format(manual_no_col='')
                     try:
                         cur.execute(base_sql + w + order_sql, params)
-                    except oracledb.DatabaseError:
+                    except db.DatabaseError:
                         cur.execute(base_sql + w_fallback + order_sql, params)
             cols = [c[0] for c in cur.description]
             rows = [dict(zip(cols, row)) for row in cur.fetchall()]
@@ -3367,7 +3345,7 @@ def fetch_gate_pass_by_id(gate_pass_id, division=None):
                 params.append(str(division))
             try:
                 cur.execute(sql.format(manual_no_col='gp.MANUAL_GATE_PASS_NO'), params)
-            except oracledb.DatabaseError:
+            except db.DatabaseError:
                 # MANUAL_GATE_PASS_NO not on this schema yet -- degrade
                 # rather than break the whole page; see the identical
                 # fallback and full rationale in fetch_all_gate_passes().
@@ -3472,7 +3450,7 @@ def cancel_gate_pass(gate_pass_id, division, username=None):
                              TRANSACTION_TYPE, SOURCE_REF, SOURCE_TABLE, POSTED_BY)
                             VALUES (:1, TO_DATE(:2,'YYYY-MM-DD'), :3, :4, 0, 0, NULL, :5, :6, :7, 'wst_djn_gatepass_header', :8)""",
                             [int(item_id), today, txn_type, float(quantity), str(division), txn_type, narration, username])
-                    except oracledb.DatabaseError:
+                    except db.DatabaseError:
                         cur.execute("""INSERT INTO wst_djn_stock_ledger
                             (ITEM_ID, TXN_DATE, TXN_TYPE, QTY_IN, QTY_OUT, BALANCE, REF_ID, DIVISION)
                             VALUES (:1, TO_DATE(:2,'YYYY-MM-DD'), :3, :4, 0, 0, NULL, :5)""",
@@ -3481,10 +3459,10 @@ def cancel_gate_pass(gate_pass_id, division, username=None):
 
                     if so_line_id:
                         cur.execute("""UPDATE wst_djn_sales_line
-                            SET SHIPPED_QTY = GREATEST(NVL(SHIPPED_QTY,0) - :1, 0),
+                            SET SHIPPED_QTY = GREATEST(COALESCE(SHIPPED_QTY,0) - :1, 0),
                                 LINE_STATUS = CASE
-                                    WHEN GREATEST(NVL(SHIPPED_QTY,0) - :2, 0) <= 0 THEN 'Entered'
-                                    WHEN GREATEST(NVL(SHIPPED_QTY,0) - :3, 0) >= QUANTITY THEN 'Closed'
+                                    WHEN GREATEST(COALESCE(SHIPPED_QTY,0) - :2, 0) <= 0 THEN 'Entered'
+                                    WHEN GREATEST(COALESCE(SHIPPED_QTY,0) - :3, 0) >= QUANTITY THEN 'Closed'
                                     ELSE 'Partial'
                                 END
                             WHERE LINE_ID=:4""", [float(quantity), float(quantity), float(quantity), int(so_line_id)])
@@ -3500,7 +3478,7 @@ def cancel_gate_pass(gate_pass_id, division, username=None):
                 # once here (one row per line), so this is a direct
                 # per-line check, not a running tally.
                 for item_id, so_doc_id, so_line_id in unlock_candidates:
-                    cur.execute("SELECT NVL(SHIPPED_QTY,0), SOURCE_TARGET_MONTH FROM wst_djn_sales_line sl "
+                    cur.execute("SELECT COALESCE(SHIPPED_QTY,0), SOURCE_TARGET_MONTH FROM wst_djn_sales_line sl "
                                 "JOIN wst_djn_sales_header sh ON sh.DOC_ID = sl.DOC_ID "
                                 "WHERE sl.LINE_ID=:1", [so_line_id])
                     check_row = cur.fetchone()
@@ -3514,7 +3492,7 @@ def cancel_gate_pass(gate_pass_id, division, username=None):
                     _release_quotation_lock(cur, item_id, division, target_month.strftime('%Y-%m-%d'))
 
                 cur.execute("""UPDATE wst_djn_gatepass_header
-                    SET STATUS='Cancelled', CANCELLED_BY=:1, CANCELLED_DATE=SYSDATE
+                    SET STATUS='Cancelled', CANCELLED_BY=:1, CANCELLED_DATE=LOCALTIMESTAMP(0)
                     WHERE GATE_PASS_ID=:2""", [username, gate_pass_id])
 
                 conn.commit()
@@ -3544,11 +3522,11 @@ def unlock_comparison_item(item_id, division, target_month, username=None):
     with get_connection(username) as conn:
         with conn.cursor() as cur:
             try:
-                cur.execute("""SELECT NVL(ql.STATUS,'Open') FROM wst_djn_quotation_line ql
+                cur.execute("""SELECT COALESCE(ql.STATUS,'Open') FROM wst_djn_quotation_line ql
                     JOIN wst_djn_quotation_header qh ON ql.QUOTE_DOC_ID = qh.QUOTE_DOC_ID
                     WHERE ql.ITEM_ID=:1 AND qh.DIVISION=:2
                       AND qh.TARGET_MONTH=TRUNC(TO_DATE(:3,'YYYY-MM-DD'),'MM')
-                      AND NVL(ql.STATUS,'Open')='Locked' FETCH FIRST 1 ROW ONLY""",
+                      AND COALESCE(ql.STATUS,'Open')='Locked' FETCH FIRST 1 ROW ONLY""",
                     [int(item_id), str(division), str(target_month)])
                 if not cur.fetchone():
                     return False, "This item isn't currently locked."
@@ -3604,7 +3582,7 @@ def insert_whatsapp_log(list_id, vendor_id, status, message_text):
         with conn.cursor() as cur:
             cur.execute("""INSERT INTO wst_djn_whatsapp_log
                 (LIST_ID, VENDOR_ID, SENT_AT, STATUS, MESSAGE_TEXT)
-                VALUES (:1,:2,SYSTIMESTAMP,:3,:4)""",
+                VALUES (:1,:2,LOCALTIMESTAMP,:3,:4)""",
                 [int(list_id), int(vendor_id), status, message_text])
             conn.commit()
 
@@ -3621,7 +3599,7 @@ def fetch_all_group_types():
         with conn.cursor() as cur:
             try:
                 cur.execute(f"SELECT {base_cols}{audit_cols}{from_sql}")
-            except oracledb.DatabaseError:
+            except db.DatabaseError:
                 # Audit columns not yet present on this table (DDL not applied). Degrade gracefully.
                 cur.execute(f"SELECT {base_cols}{from_sql}")
             cols = [c[0] for c in cur.description]
@@ -3718,7 +3696,7 @@ def log_audit(table_name, record_id, action, changed_by, old_data=None, new_data
                 cur.execute("""
                     INSERT INTO wst_djn_audit_log 
                     (TABLE_NAME, RECORD_ID, ACTION, FIELD_NAME, OLD_VALUE, NEW_VALUE, CHANGED_BY)
-                    VALUES (:1,:2,:3,'ALL',TO_CHAR(:4),'DELETED',:5)
+                    VALUES (:1,:2,:3,'ALL',CAST(:4 AS TEXT),'DELETED',:5)
                 """, [table_name, str(record_id), action, str(old_data), changed_by])
             elif old_data and new_data:
                 for key in new_data:
@@ -3891,7 +3869,7 @@ def fetch_group_types_paginated(search=None, page=1, page_size=7):
             total = cur.fetchone()[0]
             try:
                 cur.execute(sql.format(cols=audit_cols), params)
-            except oracledb.DatabaseError:
+            except db.DatabaseError:
                 # Audit columns not yet present on this table (DDL not applied). Degrade gracefully.
                 cur.execute(sql.format(cols=""), params)
             cols = [c[0] for c in cur.description]
@@ -3912,8 +3890,7 @@ def fetch_home_summary():
     counts = {
         'listed':         """SELECT
                                 (SELECT COUNT(*) FROM wst_djn_monthly_stock_list) +
-                                (SELECT COUNT(*) FROM wst_djn_msl_snapshot_line)
-                             FROM DUAL""",
+                                (SELECT COUNT(*) FROM wst_djn_msl_snapshot_line)""",
         # FIX (previously a real bug): wst_djn_quotations is a dead,
         # orphaned table -- insert_quotation(), the only function that
         # would ever write a NEW row to it, is never called anywhere in
@@ -3957,7 +3934,7 @@ def fetch_home_summary():
             for key, sql in counts.items():
                 try:
                     cur.execute(sql); s[key] = cur.fetchone()[0]
-                except oracledb.DatabaseError:
+                except db.DatabaseError:
                     pass
     _wh_cache.set('wastage:home_summary', s, 60)
     return s
@@ -3979,8 +3956,8 @@ def fetch_home_dashboard(division=None):
     d = {'stock_kg': 0.0, 'items_in_stock': 0, 'items_negative': 0,
          'month_received_kg': 0.0, 'month_dispatched_kg': 0.0,
          'trend': [], 'top_items': [], 'recent': []}
-    div_l = " AND NVL(l.DIVISION,'08') = :div" if division else ""
-    div_b = " AND NVL(b.DIVISION,'08') = :div" if division else ""
+    div_l = " AND COALESCE(l.DIVISION,'08') = :div" if division else ""
+    div_b = " AND COALESCE(b.DIVISION,'08') = :div" if division else ""
     dp = {'div': str(division)} if division else {}
     KG = "UPPER(i.UNIT) IN ('KG','KGS')"
 
@@ -3988,15 +3965,15 @@ def fetch_home_dashboard(division=None):
         with conn.cursor() as cur:
             # Stock on hand + counts (from the Item Balance table)
             try:
-                cur.execute(f"""SELECT NVL(SUM(CASE WHEN {KG} THEN b.BALANCE END),0),
-                                       NVL(SUM(CASE WHEN b.BALANCE > 0 THEN 1 END),0),
-                                       NVL(SUM(CASE WHEN b.BALANCE < 0 THEN 1 END),0)
+                cur.execute(f"""SELECT COALESCE(SUM(CASE WHEN {KG} THEN b.BALANCE END),0),
+                                       COALESCE(SUM(CASE WHEN b.BALANCE > 0 THEN 1 END),0),
+                                       COALESCE(SUM(CASE WHEN b.BALANCE < 0 THEN 1 END),0)
                                 FROM wst_djn_item_balance b
                                 JOIN wst_djn_items i ON i.ITEM_ID = b.ITEM_ID
                                 WHERE 1=1 {div_b}""", dp)
                 r = cur.fetchone()
                 d['stock_kg'], d['items_in_stock'], d['items_negative'] = float(r[0]), int(r[1]), int(r[2])
-            except oracledb.DatabaseError:
+            except db.DatabaseError:
                 pass
 
             # 6-month receiving vs dispatch trend (kg) from the ledger
@@ -4005,8 +3982,8 @@ def fetch_home_dashboard(division=None):
                 for _ in range(5):
                     first = (first.replace(day=1) - _td(days=1)).replace(day=1)
                 cur.execute(f"""SELECT TO_CHAR(TRUNC(l.TXN_DATE,'MM'),'YYYY-MM') AS M,
-                                       NVL(SUM(CASE WHEN l.TXN_TYPE='RECEIVE' THEN l.QTY_IN END),0),
-                                       NVL(SUM(CASE WHEN l.TXN_TYPE LIKE 'GATEPASS%' THEN l.QTY_OUT END),0)
+                                       COALESCE(SUM(CASE WHEN l.TXN_TYPE='RECEIVE' THEN l.QTY_IN END),0),
+                                       COALESCE(SUM(CASE WHEN l.TXN_TYPE LIKE 'GATEPASS%' THEN l.QTY_OUT END),0)
                                 FROM wst_djn_stock_ledger l
                                 JOIN wst_djn_items i ON i.ITEM_ID = l.ITEM_ID
                                 WHERE {KG} AND l.TXN_DATE >= TO_DATE(:f,'YYYY-MM-DD') {div_l}
@@ -4025,7 +4002,7 @@ def fetch_home_dashboard(division=None):
                 d['trend'] = months
                 d['month_received_kg'] = months[-1]['received']
                 d['month_dispatched_kg'] = months[-1]['dispatched']
-            except oracledb.DatabaseError:
+            except db.DatabaseError:
                 pass
 
             # Top items by current balance
@@ -4035,12 +4012,12 @@ def fetch_home_dashboard(division=None):
                                   FROM wst_djn_item_balance b
                                   JOIN wst_djn_items i ON i.ITEM_ID = b.ITEM_ID
                                   WHERE b.BALANCE > 0 {div_b}
-                                  ORDER BY b.BALANCE DESC) WHERE ROWNUM <= 6""", dp)
+                                  ORDER BY b.BALANCE DESC) sub LIMIT 6""", dp)
                 rows = cur.fetchall()
                 top = max([float(r[2]) for r in rows] + [1])
                 d['top_items'] = [{'name': r[0], 'unit': (r[1] or '').lower(), 'balance': float(r[2]),
                                    'pct': round(float(r[2]) * 100 / top, 1)} for r in rows]
-            except oracledb.DatabaseError:
+            except db.DatabaseError:
                 pass
 
             # Recent movements
@@ -4051,7 +4028,7 @@ def fetch_home_dashboard(division=None):
                                   FROM wst_djn_stock_ledger l
                                   JOIN wst_djn_items i ON i.ITEM_ID = l.ITEM_ID
                                   WHERE 1=1 {div_l}
-                                  ORDER BY l.TXN_DATE DESC, l.LEDGER_ID DESC) WHERE ROWNUM <= 8""", dp)
+                                  ORDER BY l.TXN_DATE DESC, l.LEDGER_ID DESC) sub LIMIT 8""", dp)
                 for name, unit, ttype, qin, qout, tdate in cur.fetchall():
                     qin, qout = float(qin or 0), float(qout or 0)
                     ttype = ttype or ''
@@ -4059,7 +4036,7 @@ def fetch_home_dashboard(division=None):
                         ttype, 'Dispatched' if ttype.startswith('GATEPASS') else ttype.title())
                     d['recent'].append({'item': name, 'unit': (unit or '').lower(), 'label': label,
                                         'is_in': qin > 0, 'qty': qin if qin > 0 else qout, 'date': tdate})
-            except oracledb.DatabaseError:
+            except db.DatabaseError:
                 pass
 
     _wh_cache.set(key, d, 60)
@@ -4119,7 +4096,7 @@ def _recalc_item_balance(cur, item_id, division, txn_date, transaction_type, qty
 
     cur.execute("""SELECT LEDGER_ID, QTY_IN, QTY_OUT
                    FROM wst_djn_stock_ledger
-                   WHERE ITEM_ID = :1 AND NVL(DIVISION,'08') = :2
+                   WHERE ITEM_ID = :1 AND COALESCE(DIVISION,'08') = :2
                    ORDER BY TXN_DATE, LEDGER_ID""",
                 [int(item_id), div])
     running = 0
@@ -4132,9 +4109,9 @@ def _recalc_item_balance(cur, item_id, division, txn_date, transaction_type, qty
             "UPDATE wst_djn_stock_ledger SET BALANCE = :1 WHERE LEDGER_ID = :2",
             updates)
 
-    cur.execute("""SELECT NVL(SUM(QTY_IN),0), NVL(SUM(QTY_OUT),0)
+    cur.execute("""SELECT COALESCE(SUM(QTY_IN),0), COALESCE(SUM(QTY_OUT),0)
                    FROM wst_djn_stock_ledger
-                   WHERE ITEM_ID = :1 AND NVL(DIVISION,'08') = :2""",
+                   WHERE ITEM_ID = :1 AND COALESCE(DIVISION,'08') = :2""",
                 [int(item_id), div])
     agg = cur.fetchone()
     tot_in  = agg[0] if agg else 0
@@ -4161,16 +4138,16 @@ def _recalc_item_balance(cur, item_id, division, txn_date, transaction_type, qty
         # pattern already accepted elsewhere in this file for this
         # exact class of ID (generate_doc_id() and friends).
         cur.execute("""MERGE INTO wst_djn_item_balance b
-            USING (SELECT :1 AS ITEM_ID, :2 AS DIVISION FROM DUAL) s
+            USING (SELECT :1 AS ITEM_ID, :2 AS DIVISION) s
             ON (b.ITEM_ID = s.ITEM_ID AND b.DIVISION = s.DIVISION)
             WHEN MATCHED THEN UPDATE SET
-                b.TOTAL_IN = :3, b.TOTAL_OUT = :4, b.BALANCE = :5,
-                b.LAST_TXN_DATE = TO_DATE(:6,'YYYY-MM-DD'),
-                b.LAST_TXN_TYPE = :7, b.LAST_TXN_QTY = :8
+                TOTAL_IN = :3, TOTAL_OUT = :4, BALANCE = :5,
+                LAST_TXN_DATE = TO_DATE(:6,'YYYY-MM-DD'),
+                LAST_TXN_TYPE = :7, LAST_TXN_QTY = :8
             WHEN NOT MATCHED THEN INSERT
                 (BALANCE_ID, ITEM_ID, DIVISION, TOTAL_IN, TOTAL_OUT, BALANCE,
                  LAST_TXN_DATE, LAST_TXN_TYPE, LAST_TXN_QTY)
-                VALUES ((SELECT NVL(MAX(BALANCE_ID),0)+1 FROM wst_djn_item_balance),
+                VALUES ((SELECT COALESCE(MAX(BALANCE_ID),0)+1 FROM wst_djn_item_balance),
                         :9, :10, :11, :12, :13,
                         TO_DATE(:14,'YYYY-MM-DD'), :15, :16)""",
             [int(item_id), div,
@@ -4181,7 +4158,7 @@ def _recalc_item_balance(cur, item_id, division, txn_date, transaction_type, qty
              tot_in, tot_out, live_bal,
              txn_date_str, transaction_type,
              float(qty_in or qty_out or 0)])
-    except oracledb.DatabaseError as e:
+    except db.DatabaseError as e:
         # Genuinely missing wst_djn_item_balance table degrades safely either
         # way (the ledger row itself is already saved) -- but ANY OTHER
         # failure here (a bad date format, a constraint violation, etc.)
@@ -4246,17 +4223,17 @@ def recalculate_all_balances(item_id=None, division=None, username=None):
                 if item_id:
                     where.append("ITEM_ID = :1"); params.append(int(item_id))
                 if division:
-                    where.append("NVL(DIVISION,'08') = :2"); params.append(str(division))
+                    where.append("COALESCE(DIVISION,'08') = :2"); params.append(str(division))
                 w = (" WHERE " + " AND ".join(where)) if where else ""
 
                 # Get distinct item+division combos to recalc
-                cur.execute(f"SELECT DISTINCT ITEM_ID, NVL(DIVISION,'08') FROM wst_djn_stock_ledger{w}", params)
+                cur.execute(f"SELECT DISTINCT ITEM_ID, COALESCE(DIVISION,'08') FROM wst_djn_stock_ledger{w}", params)
                 combos = cur.fetchall()
 
             for itm, div in combos:
                 cur.execute("""SELECT LEDGER_ID, QTY_IN, QTY_OUT
                                FROM wst_djn_stock_ledger
-                               WHERE ITEM_ID = :1 AND NVL(DIVISION,'08') = :2
+                               WHERE ITEM_ID = :1 AND COALESCE(DIVISION,'08') = :2
                                ORDER BY TXN_DATE, LEDGER_ID""", [itm, div])
                 running = 0
                 updates = []
@@ -4266,9 +4243,9 @@ def recalculate_all_balances(item_id=None, division=None, username=None):
                 if updates:
                     cur.executemany("UPDATE wst_djn_stock_ledger SET BALANCE = :1 WHERE LEDGER_ID = :2", updates)
 
-                cur.execute("""SELECT NVL(SUM(QTY_IN),0), NVL(SUM(QTY_OUT),0)
+                cur.execute("""SELECT COALESCE(SUM(QTY_IN),0), COALESCE(SUM(QTY_OUT),0)
                                FROM wst_djn_stock_ledger
-                               WHERE ITEM_ID = :1 AND NVL(DIVISION,'08') = :2""", [itm, div])
+                               WHERE ITEM_ID = :1 AND COALESCE(DIVISION,'08') = :2""", [itm, div])
                 tot_in, tot_out = cur.fetchone()
                 live_bal = tot_in - tot_out
 
@@ -4285,11 +4262,11 @@ def recalculate_all_balances(item_id=None, division=None, username=None):
                 try:
                     cur.execute("""SELECT TXN_DATE, TXN_TYPE, QTY_IN, QTY_OUT
                                    FROM wst_djn_stock_ledger
-                                   WHERE ITEM_ID=:1 AND NVL(DIVISION,'08')=:2
+                                   WHERE ITEM_ID=:1 AND COALESCE(DIVISION,'08')=:2
                                    ORDER BY TXN_DATE DESC, LEDGER_ID DESC
                                    FETCH FIRST 1 ROW ONLY""", [itm, div])
                     last = cur.fetchone()
-                except oracledb.DatabaseError as e:
+                except db.DatabaseError as e:
                     import logging
                     logging.getLogger('wastage').warning(
                         f'recalculate_all_balances: last-transaction lookup failed for '
@@ -4307,16 +4284,16 @@ def recalculate_all_balances(item_id=None, division=None, username=None):
                 # exactly the same reason, for any item+division that
                 # didn't already have a balance row.
                 cur.execute("""MERGE INTO wst_djn_item_balance b
-                    USING (SELECT :1 AS ITEM_ID, :2 AS DIVISION FROM DUAL) s
+                    USING (SELECT :1 AS ITEM_ID, :2 AS DIVISION) s
                     ON (b.ITEM_ID = s.ITEM_ID AND b.DIVISION = s.DIVISION)
                     WHEN MATCHED THEN UPDATE SET
-                        b.TOTAL_IN=:3, b.TOTAL_OUT=:4, b.BALANCE=:5,
-                        b.LAST_TXN_DATE=:6, b.LAST_TXN_TYPE=:7,
-                        b.LAST_TXN_QTY=:8
+                        TOTAL_IN=:3, TOTAL_OUT=:4, BALANCE=:5,
+                        LAST_TXN_DATE=:6, LAST_TXN_TYPE=:7,
+                        LAST_TXN_QTY=:8
                     WHEN NOT MATCHED THEN INSERT
                         (BALANCE_ID, ITEM_ID,DIVISION,TOTAL_IN,TOTAL_OUT,BALANCE,
                          LAST_TXN_DATE,LAST_TXN_TYPE,LAST_TXN_QTY)
-                        VALUES((SELECT NVL(MAX(BALANCE_ID),0)+1 FROM wst_djn_item_balance),
+                        VALUES((SELECT COALESCE(MAX(BALANCE_ID),0)+1 FROM wst_djn_item_balance),
                                :9,:10,:11,:12,:13,:14,:15,:16)""",
                     [itm, div, tot_in, tot_out, live_bal,
                      last[0] if last else None, last[1] if last else None,
@@ -4342,14 +4319,14 @@ def fetch_ledger_view(division, month=None, year=None, item_id=None, txn_type=No
     sql = """SELECT l.LEDGER_ID, TO_CHAR(l.TXN_DATE,'DD Mon') AS TXN_DATE_DISP,
                     l.SOURCE_REF, l.TRANSACTION_TYPE, i.ITEM_NAME, i.UNIT AS ITEM_UNIT,
                     l.QTY_IN, l.QTY_OUT, l.BALANCE, l.POSTED_BY,
-                    l.SOURCE_TABLE, l.SOURCE_ID, NVL(l.DIVISION,'08') AS DIVISION
+                    l.SOURCE_TABLE, l.SOURCE_ID, COALESCE(l.DIVISION,'08') AS DIVISION
              FROM wst_djn_stock_ledger l
              LEFT JOIN wst_djn_items i ON l.ITEM_ID = i.ITEM_ID
              WHERE EXTRACT(MONTH FROM l.TXN_DATE) = :p_m
                AND EXTRACT(YEAR FROM l.TXN_DATE) = :p_y"""
     params = {'p_m': m, 'p_y': y}
     if division:
-        sql += " AND NVL(l.DIVISION,'08') = :p_div"
+        sql += " AND COALESCE(l.DIVISION,'08') = :p_div"
         params['p_div'] = str(division)
     if item_id:
         sql += " AND l.ITEM_ID = :p_item"
@@ -4375,7 +4352,7 @@ def fetch_ledger_view(division, month=None, year=None, item_id=None, txn_type=No
                     if r.get('TRANSACTION_TYPE') == 'ADJUST':
                         r['TRANSACTION_TYPE'] = 'Adjust In' if (r.get('QTY_IN') or 0) > 0 else 'Adjust Out'
                 return rows
-            except oracledb.DatabaseError:
+            except db.DatabaseError:
                 # Graceful fallback if new columns don't exist yet
                 return []
 
@@ -4398,7 +4375,7 @@ def fetch_ledger_report(division, month, year, item_id=None, txn_type=None):
                   AND EXTRACT(YEAR FROM l.TXN_DATE) = :p_y"""
     params = {'p_m': m, 'p_y': y}
     if division:
-        where += " AND NVL(l.DIVISION,'08') = :p_div"
+        where += " AND COALESCE(l.DIVISION,'08') = :p_div"
         params['p_div'] = str(division)
     if item_id:
         where += " AND l.ITEM_ID = :p_item"
@@ -4406,19 +4383,19 @@ def fetch_ledger_report(division, month, year, item_id=None, txn_type=None):
     order = " ORDER BY l.TXN_DATE ASC, l.LEDGER_ID ASC"
 
     rich_sql = """SELECT l.LEDGER_ID, TO_CHAR(l.TXN_DATE,'DD-Mon-YYYY') AS TXN_DATE_DISP,
-                    l.SOURCE_REF, NVL(l.TRANSACTION_TYPE, l.TXN_TYPE) AS TRANSACTION_TYPE,
+                    l.SOURCE_REF, COALESCE(l.TRANSACTION_TYPE, l.TXN_TYPE) AS TRANSACTION_TYPE,
                     i.ITEM_NAME, l.QTY_IN, l.QTY_OUT, l.BALANCE, l.POSTED_BY,
-                    NVL(l.DIVISION,'08') AS DIVISION
+                    COALESCE(l.DIVISION,'08') AS DIVISION
                   FROM wst_djn_stock_ledger l
                   LEFT JOIN wst_djn_items i ON l.ITEM_ID = i.ITEM_ID""" + where
     core_sql = """SELECT l.LEDGER_ID, TO_CHAR(l.TXN_DATE,'DD-Mon-YYYY') AS TXN_DATE_DISP,
-                    TO_CHAR(l.REF_ID) AS SOURCE_REF, l.TXN_TYPE AS TRANSACTION_TYPE,
+                    CAST(l.REF_ID AS TEXT) AS SOURCE_REF, l.TXN_TYPE AS TRANSACTION_TYPE,
                     i.ITEM_NAME, l.QTY_IN, l.QTY_OUT, l.BALANCE, NULL AS POSTED_BY,
-                    NVL(l.DIVISION,'08') AS DIVISION
+                    COALESCE(l.DIVISION,'08') AS DIVISION
                   FROM wst_djn_stock_ledger l
                   LEFT JOIN wst_djn_items i ON l.ITEM_ID = i.ITEM_ID""" + where
     if txn_type and txn_type != 'ALL':
-        rich_sql += " AND NVL(l.TRANSACTION_TYPE, l.TXN_TYPE) = :p_type"
+        rich_sql += " AND COALESCE(l.TRANSACTION_TYPE, l.TXN_TYPE) = :p_type"
         core_sql += " AND l.TXN_TYPE = :p_type"
         params['p_type'] = txn_type
 
@@ -4426,7 +4403,7 @@ def fetch_ledger_report(division, month, year, item_id=None, txn_type=None):
         with conn.cursor() as cur:
             try:
                 cur.execute(rich_sql + order, params)
-            except oracledb.DatabaseError:
+            except db.DatabaseError:
                 # Richer metadata columns not on this schema -- core columns only.
                 cur.execute(core_sql + order, params)
             cols = [c[0] for c in cur.description]
@@ -4443,7 +4420,7 @@ def fetch_ledger_items(division):
                     cur.execute("""SELECT DISTINCT i.ITEM_ID, i.ITEM_NAME
                         FROM wst_djn_stock_ledger l
                         JOIN wst_djn_items i ON l.ITEM_ID = i.ITEM_ID
-                        WHERE NVL(l.DIVISION,'08') = :1
+                        WHERE COALESCE(l.DIVISION,'08') = :1
                         ORDER BY i.ITEM_NAME""", [str(division)])
                 else:
                     cur.execute("""SELECT DISTINCT i.ITEM_ID, i.ITEM_NAME
@@ -4452,7 +4429,7 @@ def fetch_ledger_items(division):
                         ORDER BY i.ITEM_NAME""")
                 cols = [c[0] for c in cur.description]
                 return [dict(zip(cols, row)) for row in cur.fetchall()]
-            except oracledb.DatabaseError:
+            except db.DatabaseError:
                 return []
 
 
@@ -4471,7 +4448,7 @@ def fetch_item_available_balance(item_id, division):
                             [int(item_id), str(division)])
                 row = cur.fetchone()
                 return float(row[0]) if row and row[0] is not None else 0.0
-            except oracledb.DatabaseError:
+            except db.DatabaseError:
                 return 0.0  # wst_djn_item_balance not created yet -- nothing available
 
 
@@ -4482,7 +4459,7 @@ def fetch_item_balance_sheet(division):
         with conn.cursor() as cur:
             try:
                 base_sql = """SELECT b.BALANCE_ID, i.ITEM_ID,
-                        LPAD(i.ITEM_ID, 3, '0') AS ITEM_CODE,
+                        LPAD(i.ITEM_ID::text, 3, '0') AS ITEM_CODE,
                         i.ITEM_NAME, i.UNIT,
                         b.TOTAL_IN, b.TOTAL_OUT, b.BALANCE,
                         b.MIN_THRESHOLD, b.DIVISION,
@@ -4504,13 +4481,13 @@ def fetch_item_balance_sheet(division):
                 last_dir = {}
                 try:
                     cur.execute("""SELECT ITEM_ID, DIV, QTY_IN FROM (
-                                     SELECT ITEM_ID, NVL(DIVISION,'08') AS DIV, QTY_IN,
-                                            ROW_NUMBER() OVER (PARTITION BY ITEM_ID, NVL(DIVISION,'08')
+                                     SELECT ITEM_ID, COALESCE(DIVISION,'08') AS DIV, QTY_IN,
+                                            ROW_NUMBER() OVER (PARTITION BY ITEM_ID, COALESCE(DIVISION,'08')
                                                                ORDER BY TXN_DATE DESC, LEDGER_ID DESC) AS RN
                                      FROM wst_djn_stock_ledger) WHERE RN = 1""")
                     for itm, dv, qin in cur.fetchall():
                         last_dir[(itm, str(dv))] = 'IN' if (qin or 0) > 0 else 'OUT'
-                except oracledb.DatabaseError:
+                except db.DatabaseError:
                     last_dir = {}   # fall back to the type-based guess below
                 _IN_TYPES = {'RECEIVE', 'IN', 'GATEPASS_REVERSAL', 'SALE_REVERSAL', 'SHIPMENT_REVERSAL'}
 
@@ -4533,7 +4510,7 @@ def fetch_item_balance_sheet(division):
                     else:
                         r['LAST_MOVEMENT'] = '—'
                 return rows
-            except oracledb.DatabaseError:
+            except db.DatabaseError:
                 return []
 
 
@@ -4585,8 +4562,8 @@ def log_stock_balance_report(as_of_date, division, username=None):
             doc_no = generate_stock_balance_doc_no(cur)
             cur.execute("""INSERT INTO wst_djn_stock_bal_report_log
                 (REPORT_ID, DOC_NO, DIVISION, AS_OF_DATE, CREATED_BY, CREATED_DATE)
-                VALUES ((SELECT NVL(MAX(REPORT_ID),0)+1 FROM wst_djn_stock_bal_report_log),
-                        :1, :2, TO_DATE(:3,'YYYY-MM-DD'), :4, SYSDATE)""",
+                VALUES ((SELECT COALESCE(MAX(REPORT_ID),0)+1 FROM wst_djn_stock_bal_report_log),
+                        :1, :2, TO_DATE(:3,'YYYY-MM-DD'), :4, LOCALTIMESTAMP(0))""",
                 [doc_no, str(division) if division else None, str(as_of_date), username])
             conn.commit()
             cur.execute("""SELECT TO_CHAR(CREATED_DATE,'DD-Mon-YYYY HH24:MI:SS') FROM wst_djn_stock_bal_report_log
@@ -4605,13 +4582,13 @@ def fetch_historical_stock_balance(as_of_date, division=None):
         with conn.cursor() as cur:
             base_sql = """SELECT i.ITEM_ID, i.ITEM_CODE,
                     i.ITEM_NAME, i.UNIT,
-                    NVL(SUM(l.QTY_IN),0) - NVL(SUM(l.QTY_OUT),0) AS BALANCE
+                    COALESCE(SUM(l.QTY_IN),0) - COALESCE(SUM(l.QTY_OUT),0) AS BALANCE
                 FROM wst_djn_stock_ledger l
                 JOIN wst_djn_items i ON l.ITEM_ID = i.ITEM_ID
                 WHERE l.TXN_DATE <= TO_DATE(:1,'YYYY-MM-DD')"""
             params = [str(as_of_date)]
             if division:
-                base_sql += " AND NVL(l.DIVISION,'08') = :2"
+                base_sql += " AND COALESCE(l.DIVISION,'08') = :2"
                 params.append(str(division))
             base_sql += " GROUP BY i.ITEM_ID, i.ITEM_CODE, i.ITEM_NAME, i.UNIT ORDER BY i.ITEM_NAME"
             cur.execute(base_sql, params)
@@ -4661,7 +4638,7 @@ def log_monthly_stock_report(division, target_month, username=None):
             doc_no = generate_monthly_stock_report_doc_no(cur)
             cur.execute("""INSERT INTO wst_djn_monthly_stock_report_log
                 (DOC_NO, DIVISION, TARGET_MONTH, CREATED_BY, CREATED_DATE)
-                VALUES (:1, :2, TO_DATE(:3,'YYYY-MM-DD'), :4, SYSDATE)""",
+                VALUES (:1, :2, TO_DATE(:3,'YYYY-MM-DD'), :4, LOCALTIMESTAMP(0))""",
                 [doc_no, str(division) if division else None, str(target_month), username])
             conn.commit()
             cur.execute("""SELECT TO_CHAR(CREATED_DATE,'DD-Mon-YYYY HH24:MI:SS') FROM wst_djn_monthly_stock_report_log
@@ -4748,11 +4725,11 @@ def fetch_monthly_stock_report(division, target_month):
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            div_clause = " AND NVL(DIVISION,'08') = :div" if division else ""
+            div_clause = " AND COALESCE(DIVISION,'08') = :div" if division else ""
             div_params = {'div': str(division)} if division else {}
 
             # Opening -- ledger balance strictly before month start
-            cur.execute(f"""SELECT ITEM_ID, NVL(SUM(QTY_IN),0) - NVL(SUM(QTY_OUT),0) AS BAL
+            cur.execute(f"""SELECT ITEM_ID, COALESCE(SUM(QTY_IN),0) - COALESCE(SUM(QTY_OUT),0) AS BAL
                 FROM wst_djn_stock_ledger
                 WHERE TXN_DATE < TO_DATE(:month_start,'YYYY-MM-DD') {div_clause}
                 GROUP BY ITEM_ID""",
@@ -4760,7 +4737,7 @@ def fetch_monthly_stock_report(division, target_month):
             opening = {r[0]: float(r[1]) for r in cur.fetchall()}
 
             # Closing -- ledger balance through month end (inclusive)
-            cur.execute(f"""SELECT ITEM_ID, NVL(SUM(QTY_IN),0) - NVL(SUM(QTY_OUT),0) AS BAL
+            cur.execute(f"""SELECT ITEM_ID, COALESCE(SUM(QTY_IN),0) - COALESCE(SUM(QTY_OUT),0) AS BAL
                 FROM wst_djn_stock_ledger
                 WHERE TXN_DATE < TO_DATE(:month_end,'YYYY-MM-DD') + 1 {div_clause}
                 GROUP BY ITEM_ID""",
@@ -4768,7 +4745,7 @@ def fetch_monthly_stock_report(division, target_month):
             closing = {r[0]: float(r[1]) for r in cur.fetchall()}
 
             # Received, by department, this month
-            cur.execute(f"""SELECT ITEM_ID, DEPT_ID, NVL(SUM(QTY_RECEIVED),0) AS QTY
+            cur.execute(f"""SELECT ITEM_ID, DEPT_ID, COALESCE(SUM(QTY_RECEIVED),0) AS QTY
                 FROM wst_djn_stock_receiving
                 WHERE RECEIVE_DATE >= TO_DATE(:month_start,'YYYY-MM-DD')
                   AND RECEIVE_DATE < TO_DATE(:month_end,'YYYY-MM-DD') + 1 {div_clause}
@@ -4785,7 +4762,7 @@ def fetch_monthly_stock_report(division, target_month):
             dept_columns = [d for d in dept_columns if d['DEPT_ID'] in active_dept_ids]
 
             # Adjust -- net ADJUST-type ledger movement this month
-            cur.execute(f"""SELECT ITEM_ID, NVL(SUM(QTY_IN),0) - NVL(SUM(QTY_OUT),0) AS NET
+            cur.execute(f"""SELECT ITEM_ID, COALESCE(SUM(QTY_IN),0) - COALESCE(SUM(QTY_OUT),0) AS NET
                 FROM wst_djn_stock_ledger
                 WHERE TXN_TYPE = 'ADJUST'
                   AND TXN_DATE >= TO_DATE(:month_start,'YYYY-MM-DD')
@@ -4795,7 +4772,7 @@ def fetch_monthly_stock_report(division, target_month):
             adjust = {r[0]: float(r[1]) for r in cur.fetchall()}
 
             # Sale Out -- Gate Pass dispatch this month, Posted only
-            cur.execute(f"""SELECT gl.ITEM_ID, NVL(SUM(gl.GATEPASS_QTY),0) AS QTY
+            cur.execute(f"""SELECT gl.ITEM_ID, COALESCE(SUM(gl.GATEPASS_QTY),0) AS QTY
                 FROM wst_djn_gatepass_line gl
                 JOIN wst_djn_gatepass_header gh ON gl.GATE_PASS_ID = gh.GATE_PASS_ID
                 WHERE gh.STATUS = 'Posted'
@@ -4941,7 +4918,7 @@ def generate_msl_snapshot(division, target_month, cutoff_date, username=None):
                 doc_no = generate_msl_doc_no(cur, division, target_month)
                 cur.execute("""INSERT INTO wst_djn_msl_snapshot_header
                     (DOC_NO, DIVISION, TARGET_MONTH, CUTOFF_DATE, CREATED_BY, CREATED_DATE)
-                    VALUES (:1, :2, TRUNC(TO_DATE(:3,'YYYY-MM-DD'),'MM'), TO_DATE(:4,'YYYY-MM-DD'), :5, SYSDATE)""",
+                    VALUES (:1, :2, TRUNC(TO_DATE(:3,'YYYY-MM-DD'),'MM'), TO_DATE(:4,'YYYY-MM-DD'), :5, LOCALTIMESTAMP(0))""",
                     [doc_no, str(division), str(target_month), str(cutoff_date), username])
 
                 cur.execute("SELECT SNAPSHOT_ID FROM wst_djn_msl_snapshot_header WHERE DOC_NO=:1", [doc_no])

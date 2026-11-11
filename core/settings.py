@@ -2,7 +2,6 @@
 from pathlib import Path
 import environ
 import os
-import oracledb
 
 
 
@@ -11,11 +10,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 env = environ.Env(DEBUG=(bool, False))
 environ.Env.read_env(BASE_DIR / '.env')
 
-# Thick mode only when ORACLE_CLIENT_LIB is set (e.g. local Windows: D:\client19c\product\client_1\bin).
-# Leave it empty on Linux/Docker to use python-oracledb thin mode (no Instant Client needed).
-_ora_lib = os.environ.get("ORACLE_CLIENT_LIB", "").strip()
-if _ora_lib:
-    oracledb.init_oracle_client(lib_dir=_ora_lib)
 
 SECRET_KEY = env('SECRET_KEY')
 DEBUG = env('DEBUG')
@@ -74,15 +68,17 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 
 
-# --- Oracle Database ---
+# --- PostgreSQL Database ---
+# Same variables are used by the raw-SQL layer (core/db.py).
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.oracle',
-        'NAME': env('DB_SERVICE'),
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': env('DB_NAME', default='soorty'),
         'USER': env('DB_USER'),
         'PASSWORD': env('DB_PASSWORD'),
-        'HOST': '',
-        'PORT': '',
+        'HOST': env('DB_HOST', default='localhost'),
+        'PORT': env('DB_PORT', default='5432'),
+        'CONN_MAX_AGE': 60,
     }
 }
 
