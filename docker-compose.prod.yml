@@ -47,7 +47,8 @@ services:
     networks: [soorty-net]
 
   soorty-app:
-    image: ghcr.io/fasih1712/soorty-app:latest
+    # Set by the deploy workflow (ghcr.io/<owner>/<repo> of the repo that built it)
+    image: ${SOORTY_IMAGE:-ghcr.io/aftr-solutions/wastage-management-system}:latest
     container_name: soorty-app
     restart: unless-stopped
     env_file: .env

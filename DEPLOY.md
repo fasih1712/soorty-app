@@ -7,7 +7,7 @@ The server runs two containers:
 | Container | Image | Role |
 |---|---|---|
 | `soorty-db` | `postgres:16-alpine` | Database. Data lives in the `soorty_pgdata` volume. |
-| `soorty-app` | `ghcr.io/fasih1712/soorty-app` | Django + gunicorn, on host port **8090**. |
+| `soorty-app` | `ghcr.io/aftr-solutions/wastage-management-system` | Django + gunicorn, on host port **8090**. |
 
 Each workflow run builds the image, pushes it to GHCR, copies `docker-compose.prod.yml` and `postgres/*.sql` to `/opt/soorty`, and restarts the containers.
 
@@ -41,7 +41,7 @@ The workflow also creates a 2 GB swap file if one does not exist yet. A t3.micro
 | `EC2_HOST` | `13.233.73.99` |
 | `EC2_USER` | `ubuntu` |
 | `EC2_SSH_KEY` | the full contents of `web-server-key.pem` |
-| `GHCR_PAT` | a GitHub PAT with `read:packages` |
+| `GHCR_PAT` | a PAT with `read:packages`, from the user who runs the workflow (the login uses `github.actor`) |
 
 ## 3. Network
 - EC2 security group `web-server-sg` needs inbound **TCP 8090**. Later, route port 80/443 through nginx instead.
