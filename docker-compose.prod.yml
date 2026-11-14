@@ -47,8 +47,8 @@ services:
     networks: [soorty-net]
 
   soorty-app:
-    # Set by the deploy workflow (ghcr.io/<owner>/<repo> of the repo that built it)
-    image: ${SOORTY_IMAGE:-ghcr.io/aftr-solutions/wastage-management-system}:latest
+    # Set by the deploy workflow (Amazon ECR image)
+    image: ${SOORTY_IMAGE:-545908811041.dkr.ecr.ap-south-1.amazonaws.com/wastage-management-system}:latest
     container_name: soorty-app
     restart: unless-stopped
     env_file: .env

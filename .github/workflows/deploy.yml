@@ -1,43 +1,54 @@
 name: Build & Deploy to EC2
 
+# Keyless deploy: GitHub OIDC -> AWS IAM role (no secrets in this repo).
+#   build : docker image -> Amazon ECR
+#   deploy: AWS SSM Run Command on the EC2 -> fetch compose/SQL at this commit,
+#           pull from ECR (instance role), docker compose up
 on:
-  # Auto-deploy on push is OFF until the EC2 target + secrets are set up.
-  # To enable, uncomment:
+  # Auto-deploy on push is OFF. To enable, uncomment:
   # push:
   #   branches: [main]
   workflow_dispatch:
 
+permissions:
+  id-token: write   # OIDC token for AWS
+  contents: read
+
 env:
+  AWS_REGION: ap-south-1
+  AWS_ROLE_ARN: arn:aws:iam::545908811041:role/github-actions-wastage-deploy
+  ECR_REPOSITORY: wastage-management-system
+  INSTANCE_ID: i-0fe1dd19adfb072d6
   APP_DIR: /opt/soorty
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
+    outputs:
+      image: ${{ steps.img.outputs.image }}
     steps:
       - uses: actions/checkout@v4
 
-      # ghcr.io image names must be lowercase: ghcr.io/aftr-solutions/wastage-management-system
-      - name: Image name
-        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - id: img
+        run: echo "image=${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: |
-            ${{ env.IMAGE }}:latest
-            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ steps.img.outputs.image }}:latest
+            ${{ steps.img.outputs.image }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -45,46 +56,56 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Image name
-        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
-
-      - name: Copy compose file + DB init scripts to server
-        uses: appleboy/scp-action@v0.1.7
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          source: "docker-compose.prod.yml,postgres/01_schema.sql,postgres/02_seed.sql"
-          target: ${{ env.APP_DIR }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Pull & restart
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          envs: IMAGE
-          script: |
-            set -e
-            # t3.micro has 1 GB RAM: make sure a 2 GB swap file exists (one-time, idempotent)
-            if ! sudo swapon --show | grep -q '/swapfile'; then
-              sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
-              sudo mkswap /swapfile && sudo swapon /swapfile
-              grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-            fi
-            cd ${{ env.APP_DIR }}
-            if [ ! -f .env ]; then
-              echo "ERROR: ${{ env.APP_DIR }}/.env missing on server. Create it from .env.example first."
-              exit 1
-            fi
-            export SOORTY_IMAGE="$IMAGE"
-            echo "Deploying image: $SOORTY_IMAGE:latest"
-            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-            docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
-            docker image prune -f
-            sleep 25
-            docker compose -f docker-compose.prod.yml ps
-            docker logs --tail 40 soorty-app
+      - name: Deploy via SSM
+        env:
+          IMAGE: ${{ needs.build.outputs.image }}
+          RAW: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}
+        run: |
+          REGISTRY="${IMAGE%%/*}"
+          cat > script.sh <<EOF
+          set -e
+          # t3.micro has 1 GB RAM: make sure a 2 GB swap file exists (one-time, idempotent)
+          if ! swapon --show | grep -q '/swapfile'; then
+            fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+            grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+          fi
+          cd ${APP_DIR}
+          [ -f .env ] || { echo "ERROR: ${APP_DIR}/.env missing on server"; exit 1; }
+          mkdir -p postgres
+          curl -fsSL ${RAW}/docker-compose.prod.yml -o docker-compose.prod.yml
+          curl -fsSL ${RAW}/postgres/01_schema.sql  -o postgres/01_schema.sql
+          curl -fsSL ${RAW}/postgres/02_seed.sql    -o postgres/02_seed.sql
+          command -v aws >/dev/null || snap install aws-cli --classic
+          aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${REGISTRY}
+          export SOORTY_IMAGE=${IMAGE}
+          docker compose -f docker-compose.prod.yml pull
+          docker compose -f docker-compose.prod.yml up -d --remove-orphans
+          docker image prune -f
+          sleep 25
+          docker compose -f docker-compose.prod.yml ps
+          docker logs --tail 30 soorty-app
+          EOF
+          PARAMS=$(jq -n --rawfile s script.sh '{commands: [$s]}')
+          CMD_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "wastage deploy ${GITHUB_SHA::7}" \
+            --parameters "$PARAMS" \
+            --timeout-seconds 900 \
+            --query Command.CommandId --output text)
+          echo "SSM command: $CMD_ID"
+          for i in $(seq 1 90); do      # up to ~15 min
+            sleep 10
+            RES=$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" 2>/dev/null || echo '{"Status":"Pending"}')
+            case "$(echo "$RES" | jq -r .Status)" in Pending|InProgress|Delayed) continue;; *) break;; esac
+          done
+          echo "$RES" | jq -r .StandardOutputContent
+          echo "$RES" | jq -r .StandardErrorContent
+          STATUS=$(echo "$RES" | jq -r .Status)
+          echo "Status: $STATUS"
+          [ "$STATUS" = "Success" ]

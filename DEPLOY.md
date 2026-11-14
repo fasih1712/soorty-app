@@ -7,9 +7,12 @@ The server runs two containers:
 | Container | Image | Role |
 |---|---|---|
 | `soorty-db` | `postgres:16-alpine` | Database. Data lives in the `soorty_pgdata` volume. |
-| `soorty-app` | `ghcr.io/aftr-solutions/wastage-management-system` | Django + gunicorn, on host port **8090**. |
+| `soorty-app` | ECR `wastage-management-system` | Django + gunicorn, on host port **8090**. |
 
-Each workflow run builds the image, pushes it to GHCR, copies `docker-compose.prod.yml` and `postgres/*.sql` to `/opt/soorty`, and restarts the containers.
+Each workflow run works without any stored secret:
+1. GitHub Actions gets temporary AWS credentials through **OIDC** by assuming the IAM role `github-actions-wastage-deploy`.
+2. It builds the image and pushes it to **Amazon ECR** (`545908811041.dkr.ecr.ap-south-1.amazonaws.com/wastage-management-system`). ECR keeps the last 10 images.
+3. It deploys through **AWS SSM Run Command** on the EC2. The server downloads `docker-compose.prod.yml` and `postgres/*.sql` for that commit, pulls the image with its own instance role (`soorty-ec2-ssm`), and restarts the containers.
 
 ## 1. One-time server setup
 
@@ -34,17 +37,19 @@ chmod 600 .env
 
 The workflow also creates a 2 GB swap file if one does not exist yet. A t3.micro has only 1 GB of RAM.
 
-## 2. GitHub secrets (repo → Settings → Secrets and variables → Actions)
+## 2. AWS / GitHub wiring (already done)
+No GitHub secrets are needed.
 
-| Secret | Value |
+| Item | Value |
 |---|---|
-| `EC2_HOST` | `13.233.73.99` |
-| `EC2_USER` | `ubuntu` |
-| `EC2_SSH_KEY` | the full contents of `web-server-key.pem` |
-| `GHCR_PAT` | a PAT with `read:packages`, from the user who runs the workflow (the login uses `github.actor`) |
+| OIDC provider | `token.actions.githubusercontent.com` |
+| Deploy role | `arn:aws:iam::545908811041:role/github-actions-wastage-deploy`. Only this repo can assume it. It may push to that ECR repo and run SSM commands on `web-server` only. |
+| Instance role | `soorty-ec2-ssm`: `AmazonSSMManagedInstanceCore` plus ECR pull on the repo |
+| ECR repo | `wastage-management-system` (scan on push, keeps the last 10 images) |
 
 ## 3. Network
-- EC2 security group `web-server-sg` needs inbound **TCP 8090**. Later, route port 80/443 through nginx instead.
+- EC2 security group `web-server-sg` has inbound **TCP 8090** open. Later, route port 80/443 through a reverse proxy instead.
+- Deploys do not use SSH. Port 22 is only for your own logins.
 - PostgreSQL is bound to `127.0.0.1:5432` on the server only and is never exposed. For pgAdmin or DBeaver, use an SSH tunnel:
   `ssh -i web-server-key.pem -L 5432:127.0.0.1:5432 ubuntu@13.233.73.99`
 
